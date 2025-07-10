@@ -26,6 +26,7 @@
 #include <mediastreamer2/android_utils.h>
 
 #include <android/native_window_jni.h>
+#include <android/log.h>
 #include <camera/NdkCaptureRequest.h>
 #include <camera/NdkCameraCaptureSession.h>
 #include <camera/NdkCameraDevice.h>
@@ -38,6 +39,154 @@
 #include <jni.h>
 #include <math.h>
 #include <mutex>
+
+JNIEnv* getEnv() {
+	JavaVM* gJvm = ms_get_gJvm();
+    JNIEnv *env;
+    int status = gJvm->GetEnv((void**)&env, JNI_VERSION_1_6);
+    if(status < 0) {    
+        status = gJvm->AttachCurrentThread(&env, NULL);
+        if(status < 0) {        
+            return nullptr;
+        }
+    }
+    return env;
+}
+
+jclass findClass(const char* name) {
+	JNIEnv *env = ms_get_jni_env();
+	jobject gClassLoader = env->NewLocalRef(ms_get_gClassLoader());
+	jmethodID gFindClassMethod = ms_get_gFindClassMethod();
+	ms_error("-- gClassLoader: %p", gClassLoader);
+    return static_cast<jclass>(getEnv()->CallObjectMethod(gClassLoader, gFindClassMethod, getEnv()->NewStringUTF(name)));
+}
+
+uint8_t* ConvertAImageToByteArray(AImage* image, int& width, int& height, int& bufferSize) {
+    int32_t format;
+    AImage_getFormat(image, &format);
+    
+    if (format != AIMAGE_FORMAT_YUV_420_888) {
+        // Unsupported format
+        return nullptr;
+    }
+
+    int32_t planeCount;
+    AImage_getNumberOfPlanes(image, &planeCount);
+
+    if (planeCount != 3) {
+        // Unexpected number of planes
+        return nullptr;
+    }
+
+    uint8_t* yData;
+    int32_t yLen, yRowStride;
+    AImage_getPlaneData(image, 0, &yData, &yLen);
+    AImage_getPlaneRowStride(image, 0, &yRowStride);
+
+    uint8_t* uData;
+    int32_t uLen, uRowStride, uPixelStride;
+    AImage_getPlaneData(image, 2, &uData, &uLen);  // Correcting U and V plane handling
+    AImage_getPlaneRowStride(image, 2, &uRowStride);
+    AImage_getPlanePixelStride(image, 2, &uPixelStride);
+
+    uint8_t* vData;
+    int32_t vLen, vRowStride, vPixelStride;
+    AImage_getPlaneData(image, 1, &vData, &vLen);  // Correcting V and U plane handling
+    AImage_getPlaneRowStride(image, 1, &vRowStride);
+    AImage_getPlanePixelStride(image, 1, &vPixelStride);
+
+    AImage_getWidth(image, &width);
+    AImage_getHeight(image, &height);
+
+    int ySize = width * height;
+    int uvWidth = (width + 1) / 2;
+    int uvHeight = (height + 1) / 2;
+    int uvSize = uvWidth * uvHeight;
+
+    bufferSize = ySize + uvSize * 2;
+
+    uint8_t* buffer = (uint8_t*) malloc(bufferSize);
+    if (!buffer) {
+        // Memory allocation failed
+        return nullptr;
+    }
+
+    // Copy Y plane
+    for (int i = 0; i < height; ++i) {
+        memcpy(buffer + i * width, yData + i * yRowStride, width);
+    }
+
+    uint8_t* uBuffer = buffer + ySize;
+    uint8_t* vBuffer = uBuffer + uvSize;
+
+    // Copy U and V planes considering row and pixel stride
+    for (int y = 0; y < uvHeight; ++y) {
+        for (int x = 0; x < uvWidth; ++x) {
+            uBuffer[y * uvWidth + x] = uData[y * uRowStride + x * uPixelStride];
+            vBuffer[y * uvWidth + x] = vData[y * vRowStride + x * vPixelStride];
+        }
+    }
+
+    return buffer;
+}
+
+void updateAImageFromByteArray(JNIEnv* env, AImage* image, jbyteArray byteArray) {
+    jbyte* bufferPtr = env->GetByteArrayElements(byteArray, nullptr);
+    int length = env->GetArrayLength(byteArray);
+
+    uint8_t* yData = nullptr;
+    uint8_t* uData = nullptr;
+    uint8_t* vData = nullptr;
+    int32_t yLen, yRowStride;
+    int32_t uLen, uRowStride, uPixelStride;
+    int32_t vLen, vRowStride, vPixelStride;
+
+    // Get planes data and strides
+    AImage_getPlaneData(image, 0, &yData, &yLen);
+    AImage_getPlaneRowStride(image, 0, &yRowStride);
+
+    AImage_getPlaneData(image, 1, &uData, &uLen);  // Correcting U to plane 1
+    AImage_getPlaneRowStride(image, 1, &uRowStride);
+    AImage_getPlanePixelStride(image, 1, &uPixelStride);
+
+    AImage_getPlaneData(image, 2, &vData, &vLen);  // Correcting V to plane 2
+    AImage_getPlaneRowStride(image, 2, &vRowStride);
+    AImage_getPlanePixelStride(image, 2, &vPixelStride);
+
+    int32_t width, height;
+    AImage_getWidth(image, &width);
+    AImage_getHeight(image, &height);
+
+    int ySize = width * height;
+    int uvWidth = (width + 1) / 2;
+    int uvHeight = (height + 1) / 2;
+    int uvSize = uvWidth * uvHeight;
+
+    uint8_t* srcPtr = reinterpret_cast<uint8_t*>(bufferPtr);
+
+    // Copy the Y plane
+    for (int i = 0; i < height; ++i) {
+        memcpy(yData + i * yRowStride, srcPtr + i * width, width);
+    }
+
+    // Copy the U plane considering row and pixel stride
+    uint8_t* vBuffer = srcPtr + ySize;  // vBuffer should be assigned to uData (to correct the swap)
+    for (int y = 0; y < uvHeight; ++y) {
+        for (int x = 0; x < uvWidth; ++x) {
+            uData[y * uRowStride + x * uPixelStride] = vBuffer[y * uvWidth + x];
+        }
+    }
+
+    // Copy the V plane considering row and pixel stride
+    uint8_t* uBuffer = vBuffer + uvSize;  // uBuffer should be assigned to vData (to correct the swap)
+    for (int y = 0; y < uvHeight; ++y) {
+        for (int x = 0; x < uvWidth; ++x) {
+            vData[y * vRowStride + x * vPixelStride] = uBuffer[y * uvWidth + x];
+        }
+    }
+
+    env->ReleaseByteArrayElements(byteArray, bufferPtr, JNI_ABORT);
+}
 
 struct AndroidCamera2Device {
 	AndroidCamera2Device(char *id) : camId(id), orientation(0), back_facing(false), external(false) {
@@ -96,6 +245,7 @@ struct AndroidCamera2Context {
 	int rotation;
 	jobject nativeWindowId;
 	jobject surface;
+	jobject imagePreprocessor = nullptr;
 
 	MSVideoSize captureSize;
 	MSVideoSize previewSize;
@@ -303,6 +453,7 @@ static mblk_t* android_camera2_capture_image_to_mblkt(AndroidCamera2Context *d, 
 
 static void android_camera2_capture_on_image_available(void *context, AImageReader *reader) {
 	AndroidCamera2Context *d = static_cast<AndroidCamera2Context *>(context);
+
 	if (d == nullptr || d->filter == nullptr) {
 		ms_error("[Camera2 Capture] Image available callback called after filtre uninit!");
 		return;
@@ -354,7 +505,63 @@ static void android_camera2_capture_on_image_available(void *context, AImageRead
 			// We need to check if ticker is still available here, as no mutex lock can prevent it to be detached (and attached back later) in case of resizing
 			if (ticker != nullptr) tickerTime = ticker->time;
 			if (tickerTime != 0 && ms_video_capture_new_frame(&d->fpsControl, tickerTime)) {
-				if (d->frame == NULL){
+				if (d->frame == NULL) {
+					if (d->imagePreprocessor != nullptr) {
+						auto env = getEnv();
+						
+						/*
+						jobject surfaceTexture = d->nativeWindowId;
+						jclass captureTextureViewClass = env->FindClass("org/linphone/mediastream/video/capture/CaptureTextureView");
+						if (env->IsInstanceOf(surfaceTexture, captureTextureViewClass)) {
+							jmethodID setRotation = env->GetMethodID(captureTextureViewClass, "setRotation", "(I)V");
+							env->CallVoidMethod(d->nativeWindowId, setRotation, 90);
+						} else {
+							ms_warning("[Camera2 Capture] NativePreviewWindowId [%p] isn't a CaptureTextureView, can't rotate!", surfaceTexture);
+						}
+						ms_error("[Camera2 Capture] did set rotation!!");
+						*/
+						
+						int bufferSize;
+						int32_t width, height;
+						uint8_t* buffer = ConvertAImageToByteArray(image, width, height, bufferSize);
+						ms_error("[Camera2 Capture] Got a image of width: %d, height: %d", width, height);
+						
+						jbyteArray imageByteArray = env->NewByteArray(bufferSize);
+						env->SetByteArrayRegion(imageByteArray, 0, bufferSize, reinterpret_cast<jbyte*>(buffer));
+						
+						ms_error("[Camera2 Capture] Got a image byte array of length %d", bufferSize);
+						
+						ms_error("[Camera2 Capture] Have imagePreprocessor %p, continuing...", d->imagePreprocessor);
+						ms_error("[Camera2 Capture] imagePreprocessor is not null, continuing...");
+						jclass imagePreprocessorClass = findClass("org/linphone/mediastream/AndroidImagePreprocessorStub");
+						if (imagePreprocessorClass == nullptr) {
+							ms_error("[Camera2 Capture] Could not find org.linphone.mediastream.AndroidImagePreprocessor class");
+						} else {
+							ms_error("[Camera2 Capture] Got imagePreprocessorClass class, continuing...");
+							jmethodID preprocessCameraFrame = env->GetMethodID(
+								imagePreprocessorClass, 
+								"preprocessCameraFrame", 
+								"([B)[B"
+							);
+							//jobject imagePreprocessor = env->NewLocalRef(d->imagePreprocessor);
+							ms_error("[Camera2 Capture] Got imagePreprocessor %p, calling...", d->imagePreprocessor);
+							jbyteArray processedByteArray = static_cast<jbyteArray>(env->CallObjectMethod(d->imagePreprocessor, preprocessCameraFrame, imageByteArray));
+							ms_error("[Camera2 Capture] Called preprocessCameraFrame, result is %p", processedByteArray);
+							
+							ms_error("[Camera2 Capture] Convert the returned byte array back to AImage");
+							updateAImageFromByteArray(env, image, processedByteArray);
+							
+							env->DeleteLocalRef(imageByteArray);
+    						env->DeleteLocalRef(processedByteArray);
+							free(buffer);
+							
+							// ms_error("[Camera2 Capture] Allocate buffer for the result");
+							// std::vector<uint8_t> resultData(resultLength);
+							// env->GetByteArrayRegion(resultByteArray, 0, resultLength, reinterpret_cast<jbyte*>(resultData.data()));
+							
+							//env->DeleteLocalRef(imagePreprocessor);
+						}
+					}
 					mblk_t *m = android_camera2_capture_image_to_mblkt(d, image);
 					mblk_t *oldframe;
 					if (m) {
@@ -1006,6 +1213,8 @@ static int android_camera2_capture_set_surface_texture(MSFilter *f, void *arg) {
 		android_camera2_check_configuration_ok(d);
 		ms_filter_unlock(f);
 
+		ms_error("New native window ptr [%p] [%p]", d->nativeWindowId, nativeWindowId);
+
 		if (d->previewSize.width != 0 && d->previewSize.height != 0) {
 			ms_filter_notify(f, MS_CAMERA_PREVIEW_SIZE_CHANGED, &d->previewSize);
 		}
@@ -1014,6 +1223,38 @@ static int android_camera2_capture_set_surface_texture(MSFilter *f, void *arg) {
 	}
 
 	return 0; 
+}
+
+static int android_camera2_set_image_preprocessor(MSFilter *f, void *arg) {
+	AndroidCamera2Context *d = (AndroidCamera2Context *)f->data;
+	unsigned long ip = *(unsigned long *)arg;
+	jobject imagePreprocessor = (jobject)ip;
+	JNIEnv *env = ms_get_jni_env();
+	
+	ms_filter_lock(f);
+	jobject currentImagePreprocessor = d->imagePreprocessor;
+	ms_filter_unlock(f);
+	
+	ms_message("[Camera2 Capture] New image preprocessor [%p], current one is [%p], arg is %p", imagePreprocessor, d->imagePreprocessor, arg);
+	
+	if (ip == 0) {
+		if (currentImagePreprocessor) {
+			env->DeleteGlobalRef(currentImagePreprocessor);
+			d->imagePreprocessor = nullptr;
+		}
+	} else if (!env->IsSameObject(currentImagePreprocessor, imagePreprocessor)) {
+		if (currentImagePreprocessor != nullptr) {
+			env->DeleteGlobalRef(currentImagePreprocessor);
+		}
+		
+		d->imagePreprocessor = env->NewGlobalRef(imagePreprocessor);
+		
+		ms_error("Set new image preprocessor [%p] [%p]", d->imagePreprocessor, imagePreprocessor);
+	} else {
+		ms_message("[Camera2 Capture] New image preprocessor is the same as the current one, skipping...");
+	}
+	
+	return 0;
 }
 
 static void android_camera2_capture_update_preview_size(AndroidCamera2Context *d) {
@@ -1119,6 +1360,7 @@ static MSFilterMethod android_camera2_capture_methods[] = {
 		{ MS_FILTER_GET_VIDEO_SIZE, &android_camera2_capture_get_vsize },
 		{ MS_VIDEO_CAPTURE_SET_DEVICE_ORIENTATION, &android_camera2_capture_set_device_rotation },
 		{ MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID, &android_camera2_capture_set_surface_texture },
+		{ MS_VIDEO_DISPLAY_SET_IMAGE_PREPROCESSOR, &android_camera2_set_image_preprocessor },
 		{ MS_FILTER_GET_PIX_FMT, &android_camera2_capture_get_pix_fmt },
 		{ 0, 0 }
 };

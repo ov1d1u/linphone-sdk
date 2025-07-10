@@ -97,6 +97,7 @@ public:
 	void removeReleasingCall(const std::shared_ptr<Call> &call);
 	void setCurrentCall(const std::shared_ptr<Call> &call);
 	void setVideoWindowId(bool preview, void *id);
+	void setImagePreprocessor(void *arg);
 
 	bool setOutputAudioDevice(const std::shared_ptr<AudioDevice> &audioDevice);
 	bool setInputAudioDevice(const std::shared_ptr<AudioDevice> &audioDevice);

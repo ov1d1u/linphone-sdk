@@ -275,6 +275,8 @@ public:
 	virtual void *createNativePreviewWindowId() const = 0;
 	virtual void setNativePreviewWindowId(void *w) = 0;
 	virtual void *getNativePreviewWindowId() const = 0;
+	virtual void setImagePreprocessor(void *arg) = 0;
+	virtual void *getImagePreprocessor() const = 0;
 	virtual void parametersChanged() = 0;
 	virtual void requestNotifyNextVideoFrameDecoded() = 0;
 	virtual int takePreviewSnapshot(const std::string &file) = 0;

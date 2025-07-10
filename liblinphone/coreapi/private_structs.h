@@ -473,6 +473,7 @@ class Core;
 	int audio_bw;                                                                                                      \
 	void *video_window_id;                                                                                             \
 	void *preview_window_id;                                                                                           \
+	void *image_preprocessor;                                                                                          \
 	time_t netup_time;                                                                                                 \
 	struct _EcCalibrator *ecc;                                                                                         \
 	struct _EchoTester *ect;                                                                                           \

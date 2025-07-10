@@ -5594,6 +5594,28 @@ void MediaSession::setNativePreviewWindowId(BCTBX_UNUSED(void *id)) {
 #endif
 }
 
+void MediaSession::setImagePreprocessor(void *arg) {
+#ifdef VIDEO_ENABLED
+	L_D();
+	auto iface = d->getStreamsGroup().lookupMainStreamInterface<MS2VideoControl>(SalVideo);
+	if (iface) {
+		auto vs = iface->getVideoStream();
+		iface->setImagePreprocessor(arg);
+	}
+#endif
+}
+
+void *MediaSession::getImagePreprocessor() const {
+#ifdef VIDEO_ENABLED
+	L_D();
+	auto iface = d->getStreamsGroup().lookupMainStreamInterface<MS2VideoControl>(SalVideo);
+	if (iface) {
+		return iface->getImagePreprocessor();
+	}
+#endif
+	return nullptr;
+}
+
 void *MediaSession::getNativePreviewVideoWindowId() const {
 #ifdef VIDEO_ENABLED
 	L_D();

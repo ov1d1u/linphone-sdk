@@ -55,6 +55,24 @@ static const char* LogDomain = "Linphone";
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *ajvm, void *reserved) {
 	ms_set_jvm(ajvm);
+#ifdef __ANDROID__
+	ms_set_gJvm(ajvm);
+
+	JNIEnv *env;
+	ajvm->GetEnv((void**)&env, JNI_VERSION_1_6);
+	ajvm->AttachCurrentThread(&env, NULL);
+
+    auto imagePreprocessorClass = env->FindClass("org/linphone/mediastream/AndroidImagePreprocessorStub");
+    jclass classClass = env->GetObjectClass(imagePreprocessorClass);
+    auto classLoaderClass = env->FindClass("java/lang/ClassLoader");
+    auto getClassLoaderMethod = env->GetMethodID(classClass, "getClassLoader",
+                                             "()Ljava/lang/ClassLoader;");
+    jobject gClassLoader = env->NewGlobalRef(env->CallObjectMethod(imagePreprocessorClass, getClassLoaderMethod));
+	ms_set_gClassLoader(gClassLoader);
+    jmethodID gFindClassMethod = env->GetMethodID(classLoaderClass, "findClass",
+                                    "(Ljava/lang/String;)Ljava/lang/Class;");
+	ms_set_gFindClassMethod(gFindClassMethod);
+#endif /* __ANDROID__ */
 	jvm = ajvm;
 	return JNI_VERSION_1_2;
 }

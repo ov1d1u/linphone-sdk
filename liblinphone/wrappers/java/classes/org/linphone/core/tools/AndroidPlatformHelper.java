@@ -74,6 +74,7 @@ import org.linphone.core.tools.service.CoreService;
 import org.linphone.core.tools.service.PushService;
 import org.linphone.core.tools.service.FileTransferService;
 import org.linphone.mediastream.MediastreamerAndroidContext;
+import org.linphone.mediastream.AndroidImagePreprocessor;
 import org.linphone.mediastream.video.capture.CaptureTextureView;
 import org.linphone.mediastream.Version;
 
@@ -193,6 +194,8 @@ public class AndroidPlatformHelper {
     private native void setNativePreviewWindowId(long nativePtr, Object view);
 
     private native void setNativeVideoWindowId(long nativePtr, Object view);
+    
+    private native void setImagePreprocessor(long nativePtr, Object preprocessor);
 
     private native void setParticipantDeviceNativeVideoWindowId(long nativePtr, long participantDevicePtr, Object view);
 

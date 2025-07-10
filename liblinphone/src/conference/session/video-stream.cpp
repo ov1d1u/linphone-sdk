@@ -534,6 +534,10 @@ void MS2VideoStream::render(const OfferAnswerContext &ctx, CallSession::State ta
 		    pt ? PayloadType::create(getCore().getSharedFromThis(), pt) : nullptr);
 	}
 
+	lError() << "MS2VideoSteram::render getCCore()->image_preprocessor: " << getCCore()->image_preprocessor;
+	if (getCCore()->image_preprocessor != 0) {
+		video_stream_set_image_preprocessor(mStream, getCCore()->image_preprocessor);
+	}
 	if (getCCore()->video_conf.preview_vsize.width != 0)
 		video_stream_set_preview_size(mStream, getCCore()->video_conf.preview_vsize);
 	video_stream_set_fps(mStream, linphone_core_get_preferred_framerate(getCCore()));
@@ -1017,6 +1021,26 @@ void *MS2VideoControl::getNativeWindowId() const {
 	return vs ? video_stream_local_screen_sharing_enabled(vs) ? video_stream_get_native_preview_window_id(vs)
 	                                                          : video_stream_get_native_window_id(vs)
 	          : nullptr;
+}
+
+void MS2VideoControl::setImagePreprocessor(void *arg) {
+	VideoStream *vs = getVideoStream();
+	mImagePreprocessor = arg;
+	if (vs) {
+		video_stream_set_image_preprocessor(vs, arg);
+	}
+}
+
+void *MS2VideoControl::getImagePreprocessor() const {
+	VideoStream *vs = getVideoStream();
+	if (mImagePreprocessor) {
+		return mImagePreprocessor;
+	}
+
+	if (vs) {
+		return video_stream_get_image_preprocessor(vs);
+	}
+	return nullptr;
 }
 
 // Preview API should not be call for Main stream if screen sharing is activated.

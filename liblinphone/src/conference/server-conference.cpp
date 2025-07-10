@@ -1722,6 +1722,7 @@ void ServerConference::addLocalEndpoint() {
 				if (vci) {
 					vci->setNativePreviewWindowId(getCore()->getCCore()->preview_window_id);
 					vci->setNativeWindowId(getCore()->getCCore()->video_window_id);
+					vci->setImagePreprocessor(getCore()->getCCore()->image_preprocessor);
 				}
 			}
 		}

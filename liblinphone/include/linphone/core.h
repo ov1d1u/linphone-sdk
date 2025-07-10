@@ -4242,6 +4242,22 @@ LINPHONE_PUBLIC const char *linphone_core_get_static_picture(LinphoneCore *core)
 LINPHONE_PUBLIC LinphoneStatus linphone_core_set_static_picture_fps(LinphoneCore *core, float fps);
 
 /**
+ * Sets a webcam image preprocessor.
+ * @param core #LinphoneCore object @notnil
+ * @param arg The argument passed to the preprocessor. @maybenil
+ * @ingroup media_parameters
+ **/
+LINPHONE_PUBLIC void linphone_core_set_image_preprocessor(LinphoneCore *core, void *arg);
+
+/**
+ * Gets the webcam image preprocessor.
+ * @param core #LinphoneCore object @notnil
+ * @return The image preprocessor. @maybenil
+ * @ingroup media_parameters
+ **/
+LINPHONE_PUBLIC void *linphone_core_get_image_preprocessor(const LinphoneCore *core);
+
+/**
  * Get the frame rate for static picture
  * @param core #LinphoneCore object. @notnil
  * @return The frame rate used for static picture.

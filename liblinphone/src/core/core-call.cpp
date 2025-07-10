@@ -207,6 +207,38 @@ void CorePrivate::setVideoWindowId(bool preview, void *id) {
 #pragma GCC diagnostic pop
 #endif // _MSC_VER
 
+#ifndef _MSC_VER
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif // _MSC_VER
+void CorePrivate::setImagePreprocessor(void *arg) {
+#ifdef VIDEO_ENABLED
+	L_Q();
+	lError() << "----- CorePrivate::setImagePreprocessor " << arg;
+	if (q->getCCore()->conf_ctx) {
+		Conference *conf = Conference::toCpp(q->getCCore()->conf_ctx);
+		if (conf->isIn() && conf->getVideoControlInterface()) {
+			lError()
+			    << "----- CorePrivate::setImagePreprocessor conf->getVideoControlInterface()->setImagePreprocessor";
+			conf->getVideoControlInterface()->setImagePreprocessor(arg);
+			return;
+		}
+	}
+	for (const auto &call : calls) {
+		shared_ptr<MediaSession> ms = dynamic_pointer_cast<MediaSession>(call->getActiveSession());
+		if (ms) {
+			lError() << "----- CorePrivate::setImagePreprocessor ms->setImagePreprocessor";
+			ms->setImagePreprocessor(arg);
+		}
+	}
+
+	lError() << "----- CorePrivate::setImagePreprocessor end";
+#endif
+}
+#ifndef _MSC_VER
+#pragma GCC diagnostic pop
+#endif // _MSC_VER
+
 /*
  * setCurrentCall() is the good place to notify the soundcard about its planned usage.
  * The currentCall is set when a first call happens (either incoming or outgoing), regardless of its state.

@@ -62,6 +62,7 @@ public:
 	void setVideoWindow(void *windowId) override;
 	void setParticipantDeviceVideoWindow(LinphoneParticipantDevice *participantDevice, void *windowId) override;
 	void resizeVideoPreview(int width, int height) override;
+	void setImagePreprocessor(void *arg) override;
 
 	bool isNetworkReachable() override;
 	void updateNetworkReachability() override;
@@ -95,6 +96,7 @@ public:
 
 	void _setPreviewVideoWindow(jobject window);
 	void _setVideoWindow(jobject window);
+	void _setImagePreprocessor(jobject imagePreprocessor);
 	void _setParticipantDeviceVideoWindow(LinphoneParticipantDevice *participantDevice, jobject windowId);
 	string getDownloadPath() override;
 
@@ -110,6 +112,7 @@ private:
 	jobject mSystemContext = nullptr;
 	jobject mPreviewVideoWindow = nullptr;
 	jobject mVideoWindow = nullptr;
+	jobject mImagePreprocessor = nullptr;
 	unordered_map<long, jobject> mParticipantDeviceVideoWindows;
 
 	// PlatformHelper methods
@@ -125,6 +128,7 @@ private:
 	jmethodID mGetNativeLibraryDirId = nullptr;
 	jmethodID mSetNativeVideoWindowId = nullptr;
 	jmethodID mSetNativePreviewVideoWindowId = nullptr;
+	jmethodID mSetImagePreprocessorId = nullptr;
 	jmethodID mSetParticipantDeviceNativeVideoWindowId = nullptr;
 	jmethodID mResizeVideoPreviewId = nullptr;
 	jmethodID mOnLinphoneCoreStartId = nullptr;
@@ -215,6 +219,7 @@ AndroidPlatformHelpers::AndroidPlatformHelpers(std::shared_ptr<LinphonePrivate::
 	mGetNativeLibraryDirId = getMethodId(env, klass, "getNativeLibraryDir", "()Ljava/lang/String;");
 	mSetNativeVideoWindowId = getMethodId(env, klass, "setVideoRenderingView", "(Ljava/lang/Object;)V");
 	mSetNativePreviewVideoWindowId = getMethodId(env, klass, "setVideoPreviewView", "(Ljava/lang/Object;)V");
+	mSetImagePreprocessorId = getMethodId(env, klass, "setImagePreprocessor", "(Ljava/lang/Object;)V");
 	mSetParticipantDeviceNativeVideoWindowId =
 	    getMethodId(env, klass, "setParticipantDeviceVideoRenderingView", "(JLjava/lang/Object;)V");
 	mResizeVideoPreviewId = getMethodId(env, klass, "resizeVideoPreview", "(II)V");
@@ -250,6 +255,8 @@ AndroidPlatformHelpers::AndroidPlatformHelpers(std::shared_ptr<LinphonePrivate::
 
 	mPreviewVideoWindow = nullptr;
 	mVideoWindow = nullptr;
+	mImagePreprocessor = nullptr;
+
 	mNetworkReachable = false;
 
 	lInfo() << "[Android Platform Helper] AndroidPlatformHelper is fully initialised.";
@@ -365,6 +372,15 @@ void AndroidPlatformHelpers::setVideoWindow(void *windowId) {
 			_setVideoWindow((jobject)windowId);
 		}
 	}
+}
+
+void AndroidPlatformHelpers::setImagePreprocessor(void *arg) {
+	lError() << "AndroidPlatformHelpers::setImagePreprocessor: " << arg;
+	JNIEnv *env = ms_get_jni_env();
+	if (env && mJavaHelper) {
+		env->CallVoidMethod(mJavaHelper, mSetImagePreprocessorId, (jobject)arg);
+	}
+	lError() << "AndroidPlatformHelpers::setImagePreprocessor end";
 }
 
 void AndroidPlatformHelpers::setParticipantDeviceVideoWindow(LinphoneParticipantDevice *participantDevice,
@@ -657,6 +673,24 @@ void AndroidPlatformHelpers::_setVideoWindow(jobject window) {
 	_linphone_core_set_native_video_window_id(lc, (void *)mVideoWindow);
 }
 
+void AndroidPlatformHelpers::_setImagePreprocessor(jobject imagePreprocessor) {
+	lError() << "AndroidPlatformHelpers::_setImagePreprocessor called with " << imagePreprocessor;
+	JNIEnv *env = ms_get_jni_env();
+	LinphoneCore *lc = getCore()->getCCore();
+	if (imagePreprocessor != nullptr && imagePreprocessor != mImagePreprocessor) {
+		if (mImagePreprocessor != nullptr) {
+			env->DeleteGlobalRef(mImagePreprocessor);
+		}
+		lError() << "AndroidPlatformHelpers::_setImagePreprocessor set new image preprocessor " << imagePreprocessor;
+		mImagePreprocessor = env->NewGlobalRef(imagePreprocessor);
+	} else if (imagePreprocessor == nullptr && mImagePreprocessor != nullptr) {
+		env->DeleteGlobalRef(mImagePreprocessor);
+		mImagePreprocessor = nullptr;
+		lError() << "AndroidPlatformHelpers::_setImagePreprocessor unset image preprocessor";
+	}
+	_linphone_core_set_image_preprocessor(lc, (void *)mImagePreprocessor);
+}
+
 void AndroidPlatformHelpers::_setParticipantDeviceVideoWindow(LinphoneParticipantDevice *participantDevice,
                                                               jobject window) {
 	JNIEnv *env = ms_get_jni_env();
@@ -738,6 +772,12 @@ extern "C" JNIEXPORT void JNICALL Java_org_linphone_core_tools_AndroidPlatformHe
     BCTBX_UNUSED(JNIEnv *env), BCTBX_UNUSED(jobject thiz), jlong ptr, jobject id) {
 	AndroidPlatformHelpers *androidPlatformHelper = static_cast<AndroidPlatformHelpers *>((void *)ptr);
 	androidPlatformHelper->_setVideoWindow(id);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_org_linphone_core_tools_AndroidPlatformHelper_setImagePreprocessor(
+    BCTBX_UNUSED(JNIEnv *env), BCTBX_UNUSED(jobject thiz), jlong ptr, jobject ip) {
+	AndroidPlatformHelpers *androidPlatformHelper = static_cast<AndroidPlatformHelpers *>((void *)ptr);
+	androidPlatformHelper->_setImagePreprocessor(ip);
 }
 
 extern "C" JNIEXPORT void JNICALL

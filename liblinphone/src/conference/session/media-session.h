@@ -133,6 +133,7 @@ public:
 	void *
 	getNativeVideoWindowId(const std::string label = "", const bool isMe = false, const bool isThumbnail = false) const;
 	void *getNativePreviewVideoWindowId() const;
+	void *getImagePreprocessor() const;
 	void *createNativePreviewVideoWindowId() const;
 	void *createNativeVideoWindowId(const std::string label = "",
 	                                const bool isMe = false,
@@ -158,6 +159,7 @@ public:
 	                            const bool isMe = false,
 	                            const bool isThumbnail = false);
 	void setNativePreviewWindowId(void *id);
+	void setImagePreprocessor(void *arg);
 	void setParams(const MediaSessionParams *msp);
 	void setSpeakerVolumeGain(float value);
 

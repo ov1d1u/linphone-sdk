@@ -313,6 +313,8 @@ public:
 	virtual void *createNativePreviewWindowId() const override;
 	virtual void setNativePreviewWindowId(void *w) override;
 	virtual void *getNativePreviewWindowId() const override;
+	virtual void setImagePreprocessor(void *arg) override;
+	virtual void *getImagePreprocessor() const override;
 	virtual void requestNotifyNextVideoFrameDecoded() override;
 	virtual int takePreviewSnapshot(const std::string &file) override;
 	virtual int takeVideoSnapshot(const std::string &file) override;
@@ -331,6 +333,7 @@ protected:
 	bool mCameraEnabled = true;
 	void *mNativeWindowId = nullptr;
 	void *mNativePreviewWindowId = nullptr;
+	void *mImagePreprocessor = nullptr;
 	bool mScreenSharingEnabled = false; // Swap window ID between normal and preview.
 
 private:

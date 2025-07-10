@@ -7172,6 +7172,38 @@ void linphone_core_set_native_video_window_id(LinphoneCore *lc, void *id) {
 #endif
 }
 
+void _linphone_core_set_image_preprocessor(LinphoneCore *lc, void *arg) {
+	ms_error("------- _linphone_core_set_image_preprocessor: %x", arg);
+	L_GET_PRIVATE_FROM_C_OBJECT(lc)->setImagePreprocessor(arg);
+	lc->image_preprocessor = arg;
+}
+
+void linphone_core_set_image_preprocessor(LinphoneCore *lc, void *arg) {
+#ifdef __ANDROID__
+	getPlatformHelpers(lc)->setImagePreprocessor(arg);
+#else
+	_linphone_core_set_image_preprocessor(lc, arg);
+#endif
+}
+
+void *linphone_core_get_image_preprocessor(const LinphoneCore *lc) {
+	CoreLogContextualizer logContextualizer(lc);
+	/* case where the preprocessor was previously set by the app*/
+	if (lc->image_preprocessor) {
+		return lc->image_preprocessor;
+	} else {
+#ifdef VIDEO_ENABLED
+		LinphoneCall *call = linphone_core_get_current_call(lc);
+
+		if (call) {
+			auto ms = dynamic_pointer_cast<LinphonePrivate::MediaSession>(Call::toCpp(call)->getActiveSession());
+			if (ms) return ms->getImagePreprocessor();
+		}
+#endif
+	}
+	return 0;
+}
+
 #ifndef _MSC_VER
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"

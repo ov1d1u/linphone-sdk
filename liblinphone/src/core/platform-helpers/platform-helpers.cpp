@@ -106,6 +106,9 @@ void GenericPlatformHelpers::setVideoPreviewWindow(BCTBX_UNUSED(void *windowId))
 void GenericPlatformHelpers::setVideoWindow(BCTBX_UNUSED(void *widowId)) {
 }
 
+void GenericPlatformHelpers::setImagePreprocessor(BCTBX_UNUSED(void *arg)) {
+}
+
 void GenericPlatformHelpers::setParticipantDeviceVideoWindow(BCTBX_UNUSED(LinphoneParticipantDevice *participantDevice),
                                                              BCTBX_UNUSED(void *windowId)) {
 }

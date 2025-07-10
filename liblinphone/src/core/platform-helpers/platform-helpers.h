@@ -80,6 +80,7 @@ public:
 	virtual void setVideoPreviewWindow(void *windowId) = 0;
 	virtual std::string getDownloadPath() = 0;
 	virtual void setVideoWindow(void *windowId) = 0;
+	virtual void setImagePreprocessor(void *arg) = 0;
 	virtual void setParticipantDeviceVideoWindow(LinphoneParticipantDevice *participantDevice, void *windowId) = 0;
 	virtual void resizeVideoPreview(int width, int height) = 0;
 
@@ -164,6 +165,7 @@ public:
 	std::shared_ptr<SignalInformation> getSignalInformation() override;
 	void setVideoPreviewWindow(void *windowId) override;
 	void setVideoWindow(void *windowId) override;
+	void setImagePreprocessor(void *arg) override;
 	void setParticipantDeviceVideoWindow(LinphoneParticipantDevice *participantDevice, void *windowId) override;
 	void resizeVideoPreview(int width, int height) override;
 

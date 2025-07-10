@@ -25,6 +25,10 @@ import linphone
 import SwiftUI
 #endif
 
+#if canImport(AVFoundation)
+import AVFoundation
+#endif
+
 {{#enums}}
 
 {{#enum}}
@@ -137,6 +141,11 @@ public struct LinphoneVideoViewHolder: UIViewRepresentable {
 
 protocol LinphoneObjectDelegate {
 	var cPtr: OpaquePointer {get set}
+}
+
+@objc
+public protocol IOSImagePreprocessor {
+    @objc func preprocessCameraFrame(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer
 }
 
 enum LinphoneError: Error {
@@ -349,6 +358,28 @@ public class {{className}} : LinphoneObject
 		set
 		{
 			linphone_core_set_native_preview_window_id(cPtr, newValue)
+		}
+	}
+#endif
+	/// Sets the webcam image preprocessor.
+#if os(iOS) || os(tvOS)
+	public var imagePreprocessor: IOSImagePreprocessor?
+	{
+		get
+		{
+			return Unmanaged<IOSImagePreprocessor>.fromOpaque(linphone_core_get_image_preprocessor(cPtr)).takeUnretainedValue()
+		}
+		set
+		{
+			if let previousIPPtr = linphone_core_get_image_preprocessor(cPtr)
+			{
+				Unmanaged<IOSImagePreprocessor>.fromOpaque(previousIPPtr).release()
+			}
+			if let ip = newValue {
+				linphone_core_set_image_preprocessor(cPtr, UnsafeMutableRawPointer(Unmanaged.passRetained(ip).toOpaque()))
+			} else {
+				linphone_core_set_image_preprocessor(cPtr, nil)
+			}
 		}
 	}
 #endif
