@@ -345,6 +345,11 @@ public class AndroidPlatformHelper {
         Log.i("[Platform Helper] Initialization done");
     }
 
+    public synchronized void setImagePreprocessor(Object imagePreprocessor) {
+        Log.e("[Platform Helper] setImagePreprocessor " + imagePreprocessor);
+        setImagePreprocessor(mNativePtr, imagePreprocessor);
+    }
+
     public void onLinphoneCoreStart(boolean monitoringEnabled) {
         Log.i("[Platform Helper] onLinphoneCoreStart, network monitoring is " + monitoringEnabled);
         mMonitoringEnabled = monitoringEnabled;

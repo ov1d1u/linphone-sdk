@@ -40,161 +40,181 @@
 #include <math.h>
 #include <mutex>
 
-JNIEnv* getEnv() {
-	JavaVM* gJvm = ms_get_gJvm();
-    JNIEnv *env;
-    int status = gJvm->GetEnv((void**)&env, JNI_VERSION_1_6);
-    if(status < 0) {    
-        status = gJvm->AttachCurrentThread(&env, NULL);
-        if(status < 0) {        
-            return nullptr;
-        }
-    }
-    return env;
+JNIEnv *getEnv()
+{
+	JavaVM *gJvm = ms_get_gJvm();
+	JNIEnv *env;
+	int status = gJvm->GetEnv((void **)&env, JNI_VERSION_1_6);
+	if (status < 0)
+	{
+		status = gJvm->AttachCurrentThread(&env, NULL);
+		if (status < 0)
+		{
+			return nullptr;
+		}
+	}
+	return env;
 }
 
-jclass findClass(const char* name) {
+jclass findClass(const char *name)
+{
 	JNIEnv *env = ms_get_jni_env();
 	jobject gClassLoader = env->NewLocalRef(ms_get_gClassLoader());
 	jmethodID gFindClassMethod = ms_get_gFindClassMethod();
 	ms_error("-- gClassLoader: %p", gClassLoader);
-    return static_cast<jclass>(getEnv()->CallObjectMethod(gClassLoader, gFindClassMethod, getEnv()->NewStringUTF(name)));
+	return static_cast<jclass>(getEnv()->CallObjectMethod(gClassLoader, gFindClassMethod, getEnv()->NewStringUTF(name)));
 }
 
-uint8_t* ConvertAImageToByteArray(AImage* image, int& width, int& height, int& bufferSize) {
-    int32_t format;
-    AImage_getFormat(image, &format);
-    
-    if (format != AIMAGE_FORMAT_YUV_420_888) {
-        // Unsupported format
-        return nullptr;
-    }
+uint8_t *ConvertAImageToByteArray(AImage *image, int &width, int &height, int &bufferSize)
+{
+	int32_t format;
+	AImage_getFormat(image, &format);
 
-    int32_t planeCount;
-    AImage_getNumberOfPlanes(image, &planeCount);
+	if (format != AIMAGE_FORMAT_YUV_420_888)
+	{
+		// Unsupported format
+		return nullptr;
+	}
 
-    if (planeCount != 3) {
-        // Unexpected number of planes
-        return nullptr;
-    }
+	int32_t planeCount;
+	AImage_getNumberOfPlanes(image, &planeCount);
 
-    uint8_t* yData;
-    int32_t yLen, yRowStride;
-    AImage_getPlaneData(image, 0, &yData, &yLen);
-    AImage_getPlaneRowStride(image, 0, &yRowStride);
+	if (planeCount != 3)
+	{
+		// Unexpected number of planes
+		return nullptr;
+	}
 
-    uint8_t* uData;
-    int32_t uLen, uRowStride, uPixelStride;
-    AImage_getPlaneData(image, 2, &uData, &uLen);  // Correcting U and V plane handling
-    AImage_getPlaneRowStride(image, 2, &uRowStride);
-    AImage_getPlanePixelStride(image, 2, &uPixelStride);
+	uint8_t *yData;
+	int32_t yLen, yRowStride;
+	AImage_getPlaneData(image, 0, &yData, &yLen);
+	AImage_getPlaneRowStride(image, 0, &yRowStride);
 
-    uint8_t* vData;
-    int32_t vLen, vRowStride, vPixelStride;
-    AImage_getPlaneData(image, 1, &vData, &vLen);  // Correcting V and U plane handling
-    AImage_getPlaneRowStride(image, 1, &vRowStride);
-    AImage_getPlanePixelStride(image, 1, &vPixelStride);
+	uint8_t *uData;
+	int32_t uLen, uRowStride, uPixelStride;
+	AImage_getPlaneData(image, 2, &uData, &uLen); // Correcting U and V plane handling
+	AImage_getPlaneRowStride(image, 2, &uRowStride);
+	AImage_getPlanePixelStride(image, 2, &uPixelStride);
 
-    AImage_getWidth(image, &width);
-    AImage_getHeight(image, &height);
+	uint8_t *vData;
+	int32_t vLen, vRowStride, vPixelStride;
+	AImage_getPlaneData(image, 1, &vData, &vLen); // Correcting V and U plane handling
+	AImage_getPlaneRowStride(image, 1, &vRowStride);
+	AImage_getPlanePixelStride(image, 1, &vPixelStride);
 
-    int ySize = width * height;
-    int uvWidth = (width + 1) / 2;
-    int uvHeight = (height + 1) / 2;
-    int uvSize = uvWidth * uvHeight;
+	AImage_getWidth(image, &width);
+	AImage_getHeight(image, &height);
 
-    bufferSize = ySize + uvSize * 2;
+	int ySize = width * height;
+	int uvWidth = (width + 1) / 2;
+	int uvHeight = (height + 1) / 2;
+	int uvSize = uvWidth * uvHeight;
 
-    uint8_t* buffer = (uint8_t*) malloc(bufferSize);
-    if (!buffer) {
-        // Memory allocation failed
-        return nullptr;
-    }
+	bufferSize = ySize + uvSize * 2;
 
-    // Copy Y plane
-    for (int i = 0; i < height; ++i) {
-        memcpy(buffer + i * width, yData + i * yRowStride, width);
-    }
+	uint8_t *buffer = (uint8_t *)malloc(bufferSize);
+	if (!buffer)
+	{
+		// Memory allocation failed
+		return nullptr;
+	}
 
-    uint8_t* uBuffer = buffer + ySize;
-    uint8_t* vBuffer = uBuffer + uvSize;
+	// Copy Y plane
+	for (int i = 0; i < height; ++i)
+	{
+		memcpy(buffer + i * width, yData + i * yRowStride, width);
+	}
 
-    // Copy U and V planes considering row and pixel stride
-    for (int y = 0; y < uvHeight; ++y) {
-        for (int x = 0; x < uvWidth; ++x) {
-            uBuffer[y * uvWidth + x] = uData[y * uRowStride + x * uPixelStride];
-            vBuffer[y * uvWidth + x] = vData[y * vRowStride + x * vPixelStride];
-        }
-    }
+	uint8_t *uBuffer = buffer + ySize;
+	uint8_t *vBuffer = uBuffer + uvSize;
 
-    return buffer;
+	// Copy U and V planes considering row and pixel stride
+	for (int y = 0; y < uvHeight; ++y)
+	{
+		for (int x = 0; x < uvWidth; ++x)
+		{
+			uBuffer[y * uvWidth + x] = uData[y * uRowStride + x * uPixelStride];
+			vBuffer[y * uvWidth + x] = vData[y * vRowStride + x * vPixelStride];
+		}
+	}
+
+	return buffer;
 }
 
-void updateAImageFromByteArray(JNIEnv* env, AImage* image, jbyteArray byteArray) {
-    jbyte* bufferPtr = env->GetByteArrayElements(byteArray, nullptr);
-    int length = env->GetArrayLength(byteArray);
+void updateAImageFromByteArray(JNIEnv *env, AImage *image, jbyteArray byteArray)
+{
+	jbyte *bufferPtr = env->GetByteArrayElements(byteArray, nullptr);
+	int length = env->GetArrayLength(byteArray);
 
-    uint8_t* yData = nullptr;
-    uint8_t* uData = nullptr;
-    uint8_t* vData = nullptr;
-    int32_t yLen, yRowStride;
-    int32_t uLen, uRowStride, uPixelStride;
-    int32_t vLen, vRowStride, vPixelStride;
+	uint8_t *yData = nullptr;
+	uint8_t *uData = nullptr;
+	uint8_t *vData = nullptr;
+	int32_t yLen, yRowStride;
+	int32_t uLen, uRowStride, uPixelStride;
+	int32_t vLen, vRowStride, vPixelStride;
 
-    // Get planes data and strides
-    AImage_getPlaneData(image, 0, &yData, &yLen);
-    AImage_getPlaneRowStride(image, 0, &yRowStride);
+	// Get planes data and strides
+	AImage_getPlaneData(image, 0, &yData, &yLen);
+	AImage_getPlaneRowStride(image, 0, &yRowStride);
 
-    AImage_getPlaneData(image, 1, &uData, &uLen);  // Correcting U to plane 1
-    AImage_getPlaneRowStride(image, 1, &uRowStride);
-    AImage_getPlanePixelStride(image, 1, &uPixelStride);
+	AImage_getPlaneData(image, 1, &uData, &uLen); // Correcting U to plane 1
+	AImage_getPlaneRowStride(image, 1, &uRowStride);
+	AImage_getPlanePixelStride(image, 1, &uPixelStride);
 
-    AImage_getPlaneData(image, 2, &vData, &vLen);  // Correcting V to plane 2
-    AImage_getPlaneRowStride(image, 2, &vRowStride);
-    AImage_getPlanePixelStride(image, 2, &vPixelStride);
+	AImage_getPlaneData(image, 2, &vData, &vLen); // Correcting V to plane 2
+	AImage_getPlaneRowStride(image, 2, &vRowStride);
+	AImage_getPlanePixelStride(image, 2, &vPixelStride);
 
-    int32_t width, height;
-    AImage_getWidth(image, &width);
-    AImage_getHeight(image, &height);
+	int32_t width, height;
+	AImage_getWidth(image, &width);
+	AImage_getHeight(image, &height);
 
-    int ySize = width * height;
-    int uvWidth = (width + 1) / 2;
-    int uvHeight = (height + 1) / 2;
-    int uvSize = uvWidth * uvHeight;
+	int ySize = width * height;
+	int uvWidth = (width + 1) / 2;
+	int uvHeight = (height + 1) / 2;
+	int uvSize = uvWidth * uvHeight;
 
-    uint8_t* srcPtr = reinterpret_cast<uint8_t*>(bufferPtr);
+	uint8_t *srcPtr = reinterpret_cast<uint8_t *>(bufferPtr);
 
-    // Copy the Y plane
-    for (int i = 0; i < height; ++i) {
-        memcpy(yData + i * yRowStride, srcPtr + i * width, width);
-    }
+	// Copy the Y plane
+	for (int i = 0; i < height; ++i)
+	{
+		memcpy(yData + i * yRowStride, srcPtr + i * width, width);
+	}
 
-    // Copy the U plane considering row and pixel stride
-    uint8_t* vBuffer = srcPtr + ySize;  // vBuffer should be assigned to uData (to correct the swap)
-    for (int y = 0; y < uvHeight; ++y) {
-        for (int x = 0; x < uvWidth; ++x) {
-            uData[y * uRowStride + x * uPixelStride] = vBuffer[y * uvWidth + x];
-        }
-    }
+	// Copy the U plane considering row and pixel stride
+	uint8_t *vBuffer = srcPtr + ySize; // vBuffer should be assigned to uData (to correct the swap)
+	for (int y = 0; y < uvHeight; ++y)
+	{
+		for (int x = 0; x < uvWidth; ++x)
+		{
+			uData[y * uRowStride + x * uPixelStride] = vBuffer[y * uvWidth + x];
+		}
+	}
 
-    // Copy the V plane considering row and pixel stride
-    uint8_t* uBuffer = vBuffer + uvSize;  // uBuffer should be assigned to vData (to correct the swap)
-    for (int y = 0; y < uvHeight; ++y) {
-        for (int x = 0; x < uvWidth; ++x) {
-            vData[y * vRowStride + x * vPixelStride] = uBuffer[y * uvWidth + x];
-        }
-    }
+	// Copy the V plane considering row and pixel stride
+	uint8_t *uBuffer = vBuffer + uvSize; // uBuffer should be assigned to vData (to correct the swap)
+	for (int y = 0; y < uvHeight; ++y)
+	{
+		for (int x = 0; x < uvWidth; ++x)
+		{
+			vData[y * vRowStride + x * vPixelStride] = uBuffer[y * uvWidth + x];
+		}
+	}
 
-    env->ReleaseByteArrayElements(byteArray, bufferPtr, JNI_ABORT);
+	env->ReleaseByteArrayElements(byteArray, bufferPtr, JNI_ABORT);
 }
 
-struct AndroidCamera2Device {
+struct AndroidCamera2Device
+{
 	AndroidCamera2Device(char *id) : camId(id), orientation(0), back_facing(false), external(false) {
-		
-	};
 
-	~AndroidCamera2Device() {
-		if (camId) {
+									 };
+
+	~AndroidCamera2Device()
+	{
+		if (camId)
+		{
 			ms_free(camId);
 		}
 	};
@@ -205,14 +225,15 @@ struct AndroidCamera2Device {
 	bool external;
 };
 
-struct AndroidCamera2Context {
+struct AndroidCamera2Context
+{
 	AndroidCamera2Context(MSFilter *f) : filter(f), configured(false), capturing(false), device(nullptr), rotation(0), nativeWindowId(nullptr), surface(nullptr),
-			captureFormat(AIMAGE_FORMAT_YUV_420_888),
-			frame(nullptr), bufAllocator(ms_yuv_buf_allocator_new()), fps(5), 
-			cameraDevice(nullptr), captureSession(nullptr), captureSessionOutputContainer(nullptr), 
-			nativeWindow(nullptr), captureWindow(nullptr), capturePreviewRequest(nullptr), 
-			cameraCaptureOutputTarget(nullptr), cameraPreviewOutputTarget(nullptr),
-			sessionCaptureOutput(nullptr), sessionPreviewOutput(nullptr), imageReader(nullptr) 
+										 captureFormat(AIMAGE_FORMAT_YUV_420_888),
+										 frame(nullptr), bufAllocator(ms_yuv_buf_allocator_new()), fps(5),
+										 cameraDevice(nullptr), captureSession(nullptr), captureSessionOutputContainer(nullptr),
+										 nativeWindow(nullptr), captureWindow(nullptr), capturePreviewRequest(nullptr),
+										 cameraCaptureOutputTarget(nullptr), cameraPreviewOutputTarget(nullptr),
+										 sessionCaptureOutput(nullptr), sessionPreviewOutput(nullptr), imageReader(nullptr)
 	{
 		captureSize.width = 0;
 		captureSize.height = 0;
@@ -221,19 +242,21 @@ struct AndroidCamera2Context {
 		ms_mutex_init(&mutex, NULL);
 		ms_mutex_init(&imageReaderMutex, NULL);
 		snprintf(fps_context, sizeof(fps_context), "Captured mean fps=%%f");
-		
+
 		ms_yuv_buf_allocator_set_max_frames(bufAllocator, 2); // no need to have more.
 
 		cameraManager = ACameraManager_create();
 		ms_message("[Camera2 Capture] Context ready");
 	};
 
-	~AndroidCamera2Context() {
+	~AndroidCamera2Context()
+	{
 		ms_message("[Camera2 Capture] Context destroyed");
 		// Don't delete device object in here !
 		ms_mutex_destroy(&mutex);
 		ms_mutex_destroy(&imageReaderMutex);
-		if (bufAllocator) ms_yuv_buf_allocator_free(bufAllocator);
+		if (bufAllocator)
+			ms_yuv_buf_allocator_free(bufAllocator);
 
 		ACameraManager_delete(cameraManager);
 	};
@@ -283,31 +306,40 @@ struct AndroidCamera2Context {
 // We do this because the android_camera2_capture_device_on_disconnected and android_camera2_capture_device_on_error
 // callbacks are dispatched by another thread, and there are devices for which these callbacks are called when we stop
 // the capture, causing a race condition crash.
-struct SharedAndroidCamera2Context {
-	AndroidCamera2Context* acquireContextLocked() {
+struct SharedAndroidCamera2Context
+{
+	AndroidCamera2Context *acquireContextLocked()
+	{
 		mutex.lock();
-		if (context == nullptr) {
+		if (context == nullptr)
+		{
 			ms_error("[Camera2 Capture] Context has already been released!");
 			return nullptr;
 		}
 		return context;
 	}
 
-	void unlock() {
+	void unlock()
+	{
 		mutex.unlock();
 	}
 
-	void releaseContextAndUnlock() {
+	void releaseContextAndUnlock()
+	{
 		ms_message("[Camera2 Capture] Releasing shared context pointer");
 		context = nullptr;
 		mutex.unlock();
 	}
 
-	void setContext(AndroidCamera2Context* c) {
+	void setContext(AndroidCamera2Context *c)
+	{
 		mutex.lock();
-		if (context != nullptr) {
+		if (context != nullptr)
+		{
 			ms_error("[Camera2 Capture] A context has already been set, this shouldn't happen!");
-		} else {
+		}
+		else
+		{
 			ms_message("[Camera2 Capture] Shared context pointer has been set");
 		}
 		context = c;
@@ -315,7 +347,7 @@ struct SharedAndroidCamera2Context {
 	}
 
 	std::mutex mutex;
-	AndroidCamera2Context* context;
+	AndroidCamera2Context *context;
 };
 
 static SharedAndroidCamera2Context sharedContext = {};
@@ -324,71 +356,112 @@ static SharedAndroidCamera2Context sharedContext = {};
 
 static void android_camera2_capture_stop(AndroidCamera2Context *d);
 
-static void android_camera2_capture_device_on_disconnected(void *context, ACameraDevice *device) {
-    ms_message("[Camera2 Capture] Camera %s is disconnected", ACameraDevice_getId(device));
+static void android_camera2_capture_device_on_disconnected(void *context, ACameraDevice *device)
+{
+	ms_message("[Camera2 Capture] Camera %s is disconnected", ACameraDevice_getId(device));
 
 	AndroidCamera2Context *d = sharedContext.acquireContextLocked();
-	if (d != nullptr) android_camera2_capture_stop(d);
+	if (d != nullptr)
+		android_camera2_capture_stop(d);
 	sharedContext.unlock();
 }
 
-static void android_camera2_capture_device_on_error(void *context, ACameraDevice *device, int error) {
-    ms_error("[Camera2 Capture] Error %d on camera %s", error, ACameraDevice_getId(device));
+static void android_camera2_capture_device_on_error(void *context, ACameraDevice *device, int error)
+{
+	ms_error("[Camera2 Capture] Error %d on camera %s", error, ACameraDevice_getId(device));
 
 	AndroidCamera2Context *d = sharedContext.acquireContextLocked();
-	if (d != nullptr) android_camera2_capture_stop(d);
+	if (d != nullptr)
+		android_camera2_capture_stop(d);
 	sharedContext.unlock();
 }
 
-static void android_camera2_capture_session_on_ready(void *context, ACameraCaptureSession *session) {
-    ms_message("[Camera2 Capture] Session is ready %p", session);
+static void android_camera2_capture_session_on_ready(void *context, ACameraCaptureSession *session)
+{
+	ms_message("[Camera2 Capture] Session is ready %p", session);
 }
 
-static void android_camera2_capture_session_on_active(void *context, ACameraCaptureSession *session) {
-    ms_message("[Camera2 Capture] Session is activated %p", session);
+static void android_camera2_capture_session_on_active(void *context, ACameraCaptureSession *session)
+{
+	ms_message("[Camera2 Capture] Session is activated %p", session);
 }
 
-static void android_camera2_capture_session_on_closed(void *context, ACameraCaptureSession *session) {
-    ms_message("[Camera2 Capture] Session is closed %p", session);
+static void android_camera2_capture_session_on_closed(void *context, ACameraCaptureSession *session)
+{
+	ms_message("[Camera2 Capture] Session is closed %p", session);
 }
 
 /* ************************************************************************* */
 
 // https://developer.android.com/ndk/reference/group/camera.html
-static const char* android_camera2_status_to_string(camera_status_t status) {
-	if (status == ACAMERA_OK) {
+static const char *android_camera2_status_to_string(camera_status_t status)
+{
+	if (status == ACAMERA_OK)
+	{
 		return "ACAMERA_OK";
-	} else if (status == ACAMERA_ERROR_BASE) {
+	}
+	else if (status == ACAMERA_ERROR_BASE)
+	{
 		return "ACAMERA_ERROR_BASE";
-	} else if (status == ACAMERA_ERROR_UNKNOWN) {
+	}
+	else if (status == ACAMERA_ERROR_UNKNOWN)
+	{
 		return "ACAMERA_ERROR_UNKNOWN";
-	} else if (status == ACAMERA_ERROR_INVALID_PARAMETER) {
+	}
+	else if (status == ACAMERA_ERROR_INVALID_PARAMETER)
+	{
 		return "ACAMERA_ERROR_INVALID_PARAMETER";
-	} else if (status == ACAMERA_ERROR_CAMERA_DISCONNECTED) {
+	}
+	else if (status == ACAMERA_ERROR_CAMERA_DISCONNECTED)
+	{
 		return "ACAMERA_ERROR_CAMERA_DISCONNECTED";
-	} else if (status == ACAMERA_ERROR_NOT_ENOUGH_MEMORY) {
+	}
+	else if (status == ACAMERA_ERROR_NOT_ENOUGH_MEMORY)
+	{
 		return "ACAMERA_ERROR_NOT_ENOUGH_MEMORY";
-	} else if (status == ACAMERA_ERROR_METADATA_NOT_FOUND) {
+	}
+	else if (status == ACAMERA_ERROR_METADATA_NOT_FOUND)
+	{
 		return "ACAMERA_ERROR_METADATA_NOT_FOUND";
-	} else if (status == ACAMERA_ERROR_CAMERA_DEVICE) {
+	}
+	else if (status == ACAMERA_ERROR_CAMERA_DEVICE)
+	{
 		return "ACAMERA_ERROR_CAMERA_DEVICE";
-	} else if (status == ACAMERA_ERROR_CAMERA_SERVICE) {
+	}
+	else if (status == ACAMERA_ERROR_CAMERA_SERVICE)
+	{
 		return "ACAMERA_ERROR_CAMERA_SERVICE";
-	} else if (status == ACAMERA_ERROR_SESSION_CLOSED) {
+	}
+	else if (status == ACAMERA_ERROR_SESSION_CLOSED)
+	{
 		return "ACAMERA_ERROR_SESSION_CLOSED";
-	} else if (status == ACAMERA_ERROR_INVALID_OPERATION) {
+	}
+	else if (status == ACAMERA_ERROR_INVALID_OPERATION)
+	{
 		return "ACAMERA_ERROR_INVALID_OPERATION";
-	} else if (status == ACAMERA_ERROR_STREAM_CONFIGURE_FAIL) {
+	}
+	else if (status == ACAMERA_ERROR_STREAM_CONFIGURE_FAIL)
+	{
 		return "ACAMERA_ERROR_STREAM_CONFIGURE_FAIL";
-	} else if (status == ACAMERA_ERROR_CAMERA_IN_USE) {
+	}
+	else if (status == ACAMERA_ERROR_CAMERA_IN_USE)
+	{
 		return "ACAMERA_ERROR_CAMERA_IN_USE";
-	} else if (status == ACAMERA_ERROR_MAX_CAMERA_IN_USE) {
+	}
+	else if (status == ACAMERA_ERROR_MAX_CAMERA_IN_USE)
+	{
 		return "ACAMERA_ERROR_MAX_CAMERA_IN_USE";
-	} else if (status == ACAMERA_ERROR_CAMERA_DISABLED) {
+	}
+	else if (status == ACAMERA_ERROR_CAMERA_DISABLED)
+	{
 		return "ACAMERA_ERROR_CAMERA_DISABLED";
-	} else if (status == ACAMERA_ERROR_PERMISSION_DENIED) {
+	}
+	else if (status == ACAMERA_ERROR_PERMISSION_DENIED)
+	{
 		return "ACAMERA_ERROR_PERMISSION_DENIED";
-	} else if (status == -10014) { // Can't use ACAMERA_ERROR_UNSUPPORTED_OPERATION, not present in NDK 17c...
+	}
+	else if (status == -10014)
+	{ // Can't use ACAMERA_ERROR_UNSUPPORTED_OPERATION, not present in NDK 17c...
 		return "ACAMERA_ERROR_UNSUPPORTED_OPERATION";
 	}
 
@@ -397,25 +470,33 @@ static const char* android_camera2_status_to_string(camera_status_t status) {
 
 /* ************************************************************************* */
 
-static int32_t android_camera2_capture_get_orientation(AndroidCamera2Context *d) {
+static int32_t android_camera2_capture_get_orientation(AndroidCamera2Context *d)
+{
 	int32_t orientation = d->device->orientation;
-	if (d->device->external) {
+	if (d->device->external)
+	{
 		ms_debug("[Camera2 Capture] Selected device is external");
-	} else if (d->device->back_facing) {
+	}
+	else if (d->device->back_facing)
+	{
 		ms_debug("[Camera2 Capture] Selected device is back facing");
 		orientation -= d->rotation;
-	} else {
+	}
+	else
+	{
 		ms_debug("[Camera2 Capture] Selected device is front facing");
 		orientation += d->rotation;
 	}
-	if (orientation < 0) {
+	if (orientation < 0)
+	{
 		orientation += 360;
 	}
 	orientation = orientation % 360;
 	return orientation;
 }
 
-static mblk_t* android_camera2_capture_image_to_mblkt(AndroidCamera2Context *d, AImage *image) {
+static mblk_t *android_camera2_capture_image_to_mblkt(AndroidCamera2Context *d, AImage *image)
+{
 	int32_t width, height;
 	int32_t yStride, uvStride;
 	uint8_t *yPixel, *uPixel, *vPixel;
@@ -425,7 +506,8 @@ static mblk_t* android_camera2_capture_image_to_mblkt(AndroidCamera2Context *d, 
 
 	AImage_getWidth(image, &width);
 	AImage_getHeight(image, &height);
-	if (orientation % 180 != 0) {
+	if (orientation % 180 != 0)
+	{
 		int32_t tmp = width;
 		width = height;
 		height = tmp;
@@ -439,40 +521,50 @@ static mblk_t* android_camera2_capture_image_to_mblkt(AndroidCamera2Context *d, 
 	AImage_getPlanePixelStride(image, 0, &yPixelStride);
 	AImage_getPlanePixelStride(image, 1, &uvPixelStride);
 
-	//ms_message("[Camera2 Capture] Image %p size %d/%d, y is %p, u is %p, v is %p, ystride %d, uvstride %d, ypixelstride %d, uvpixelstride %d", image, width, height, yPixel, uPixel, vPixel, yStride, uvStride, yPixelStride, uvPixelStride);
+	// ms_message("[Camera2 Capture] Image %p size %d/%d, y is %p, u is %p, v is %p, ystride %d, uvstride %d, ypixelstride %d, uvpixelstride %d", image, width, height, yPixel, uPixel, vPixel, yStride, uvStride, yPixelStride, uvPixelStride);
 
-	mblk_t* yuv_block = nullptr;
-	if (uvPixelStride == 1) {
+	mblk_t *yuv_block = nullptr;
+	if (uvPixelStride == 1)
+	{
 		yuv_block = copy_yuv_with_rotation(d->bufAllocator, yPixel, uPixel, vPixel, orientation, width, height, yStride, uvStride, uvStride);
-	} else {
+	}
+	else
+	{
 		yuv_block = copy_ycbcrbiplanar_to_true_yuv_with_rotation_and_down_scale_by_2(d->bufAllocator,
-	 		yPixel, vPixel < uPixel ? vPixel : uPixel, orientation, width, height, yStride, uvStride, uPixel < vPixel, false);
+																					 yPixel, vPixel < uPixel ? vPixel : uPixel, orientation, width, height, yStride, uvStride, uPixel < vPixel, false);
 	}
 	return yuv_block;
 }
 
-static void android_camera2_capture_on_image_available(void *context, AImageReader *reader) {
+static void android_camera2_capture_on_image_available(void *context, AImageReader *reader)
+{
 	AndroidCamera2Context *d = static_cast<AndroidCamera2Context *>(context);
 
-	if (d == nullptr || d->filter == nullptr) {
+	if (d == nullptr || d->filter == nullptr)
+	{
 		ms_error("[Camera2 Capture] Image available callback called after filtre uninit!");
 		return;
 	}
 
 	ms_filter_lock(d->filter);
-	if (!d->filter || !d->filter->ticker || !d->configured) {
+	if (!d->filter || !d->filter->ticker || !d->configured)
+	{
 		AImage *image = nullptr;
-		
+
 		media_status_t status = AMEDIA_ERROR_UNKNOWN;
 		ms_mutex_lock(&d->imageReaderMutex);
-		if (d->imageReader != nullptr) {
+		if (d->imageReader != nullptr)
+		{
 			status = AImageReader_acquireLatestImage(d->imageReader, &image);
-		} else {
+		}
+		else
+		{
 			ms_error("[Camera2 Capture] Image reader is null in on_image_available callback!");
 		}
 		ms_mutex_unlock(&d->imageReaderMutex);
 
-		if (status == AMEDIA_OK && image != nullptr) AImage_delete(image);
+		if (status == AMEDIA_OK && image != nullptr)
+			AImage_delete(image);
 		ms_filter_unlock(d->filter);
 		return;
 	}
@@ -481,104 +573,125 @@ static void android_camera2_capture_on_image_available(void *context, AImageRead
 	int32_t format;
 
 	ms_mutex_lock(&d->imageReaderMutex);
-	if (d->imageReader == nullptr) {
+	if (d->imageReader == nullptr)
+	{
 		ms_error("[Camera2 Capture] Image reader is null in on_image_available callback!");
-		if (reader != nullptr) {
+		if (reader != nullptr)
+		{
 			ms_warning("[Camera2 Capture] The reader given by the callback isn't null...");
-		} else {
+		}
+		else
+		{
 			ms_warning("[Camera2 Capture] The reader given by the callback is also null...");
 		}
 		ms_mutex_unlock(&d->imageReaderMutex);
 		return;
 	}
 
-  	media_status_t status = AImageReader_getFormat(d->imageReader, &format);
-	if (format == d->captureFormat) {
+	media_status_t status = AImageReader_getFormat(d->imageReader, &format);
+	if (format == d->captureFormat)
+	{
 		AImage *image = nullptr;
 		// Using AImageReader_acquireLatestImage will lead to the following log if maxImages given to ImageReader is 1
 		// W/NdkImageReader: Unable to acquire a lockedBuffer, very likely client tries to lock more than maxImages buffers
 		status = AImageReader_acquireLatestImage(d->imageReader, &image);
-		//status = AImageReader_acquireNextImage(d->imageReader, &image);
-		if (status == AMEDIA_OK && image != nullptr) {
-			MSTicker* ticker = d->filter->ticker;
+		// status = AImageReader_acquireNextImage(d->imageReader, &image);
+		if (status == AMEDIA_OK && image != nullptr)
+		{
+			MSTicker *ticker = d->filter->ticker;
 			uint64_t tickerTime = 0;
 			// We need to check if ticker is still available here, as no mutex lock can prevent it to be detached (and attached back later) in case of resizing
-			if (ticker != nullptr) tickerTime = ticker->time;
-			if (tickerTime != 0 && ms_video_capture_new_frame(&d->fpsControl, tickerTime)) {
-				if (d->frame == NULL) {
-					if (d->imagePreprocessor != nullptr) {
+			if (ticker != nullptr)
+				tickerTime = ticker->time;
+			if (tickerTime != 0 && ms_video_capture_new_frame(&d->fpsControl, tickerTime))
+			{
+				if (d->frame == NULL)
+				{
+					if (d->imagePreprocessor != nullptr)
+					{
 						auto env = getEnv();
-						
-						/*
-						jobject surfaceTexture = d->nativeWindowId;
-						jclass captureTextureViewClass = env->FindClass("org/linphone/mediastream/video/capture/CaptureTextureView");
-						if (env->IsInstanceOf(surfaceTexture, captureTextureViewClass)) {
-							jmethodID setRotation = env->GetMethodID(captureTextureViewClass, "setRotation", "(I)V");
-							env->CallVoidMethod(d->nativeWindowId, setRotation, 90);
-						} else {
-							ms_warning("[Camera2 Capture] NativePreviewWindowId [%p] isn't a CaptureTextureView, can't rotate!", surfaceTexture);
-						}
-						ms_error("[Camera2 Capture] did set rotation!!");
-						*/
-						
+
 						int bufferSize;
 						int32_t width, height;
-						uint8_t* buffer = ConvertAImageToByteArray(image, width, height, bufferSize);
-						ms_error("[Camera2 Capture] Got a image of width: %d, height: %d", width, height);
-						
-						jbyteArray imageByteArray = env->NewByteArray(bufferSize);
-						env->SetByteArrayRegion(imageByteArray, 0, bufferSize, reinterpret_cast<jbyte*>(buffer));
-						
-						ms_error("[Camera2 Capture] Got a image byte array of length %d", bufferSize);
-						
-						ms_error("[Camera2 Capture] Have imagePreprocessor %p, continuing...", d->imagePreprocessor);
-						ms_error("[Camera2 Capture] imagePreprocessor is not null, continuing...");
-						jclass imagePreprocessorClass = findClass("org/linphone/mediastream/AndroidImagePreprocessorStub");
-						if (imagePreprocessorClass == nullptr) {
-							ms_error("[Camera2 Capture] Could not find org.linphone.mediastream.AndroidImagePreprocessor class");
-						} else {
-							ms_error("[Camera2 Capture] Got imagePreprocessorClass class, continuing...");
-							jmethodID preprocessCameraFrame = env->GetMethodID(
-								imagePreprocessorClass, 
-								"preprocessCameraFrame", 
-								"([B)[B"
-							);
-							//jobject imagePreprocessor = env->NewLocalRef(d->imagePreprocessor);
-							ms_error("[Camera2 Capture] Got imagePreprocessor %p, calling...", d->imagePreprocessor);
-							jbyteArray processedByteArray = static_cast<jbyteArray>(env->CallObjectMethod(d->imagePreprocessor, preprocessCameraFrame, imageByteArray));
-							ms_error("[Camera2 Capture] Called preprocessCameraFrame, result is %p", processedByteArray);
-							
-							ms_error("[Camera2 Capture] Convert the returned byte array back to AImage");
-							updateAImageFromByteArray(env, image, processedByteArray);
-							
-							env->DeleteLocalRef(imageByteArray);
-    						env->DeleteLocalRef(processedByteArray);
+						uint8_t *buffer = ConvertAImageToByteArray(image, width, height, bufferSize);
+
+						if (buffer && bufferSize > 0)
+						{
+							jbyteArray imageByteArray = env->NewByteArray(bufferSize);
+							env->SetByteArrayRegion(imageByteArray, 0, bufferSize, reinterpret_cast<jbyte *>(buffer));
+
+							jclass imagePreprocessorClass = findClass("org/linphone/mediastream/AndroidImagePreprocessorStub");
+							if (imagePreprocessorClass == nullptr)
+							{
+								ms_error("[Camera2 Capture] Could not find image preprocessor class");
+							}
+							else
+							{
+								jmethodID preprocessCameraFrame = env->GetMethodID(
+									imagePreprocessorClass,
+									"preprocessCameraFrame",
+									"([B)[B");
+								if (preprocessCameraFrame)
+								{
+									jbyteArray processedByteArray = static_cast<jbyteArray>(
+										env->CallObjectMethod(d->imagePreprocessor, preprocessCameraFrame, imageByteArray));
+
+									if (env->ExceptionCheck())
+									{
+										env->ExceptionDescribe();
+										env->ExceptionClear();
+										ms_warning("[Camera2 Capture] Java exception during preprocessing");
+									}
+									else if (processedByteArray != nullptr)
+									{
+										updateAImageFromByteArray(env, image, processedByteArray);
+										env->DeleteLocalRef(processedByteArray);
+									}
+									else
+									{
+										ms_warning("[Camera2 Capture] preprocessCameraFrame returned null");
+									}
+									env->DeleteLocalRef(imageByteArray);
+								}
+								else
+								{
+									ms_error("[Camera2 Capture] Could not find preprocessCameraFrame method");
+								}
+							}
 							free(buffer);
-							
-							// ms_error("[Camera2 Capture] Allocate buffer for the result");
-							// std::vector<uint8_t> resultData(resultLength);
-							// env->GetByteArrayRegion(resultByteArray, 0, resultLength, reinterpret_cast<jbyte*>(resultData.data()));
-							
-							//env->DeleteLocalRef(imagePreprocessor);
+						}
+						else
+						{
+							ms_warning("[Camera2 Capture] Failed to convert image to byte array (null or size = %d)", bufferSize);
 						}
 					}
+
 					mblk_t *m = android_camera2_capture_image_to_mblkt(d, image);
-					mblk_t *oldframe;
-					if (m) {
+					if (m)
+					{
 						ms_mutex_lock(&d->mutex);
-						oldframe = d->frame;
+						mblk_t *oldframe = d->frame;
 						d->frame = m;
 						ms_mutex_unlock(&d->mutex);
-						if (oldframe) freemsg(oldframe);
+						if (oldframe)
+							freemsg(oldframe);
 					}
-				} else ms_warning("[Camera2 Capture] skipped frame, the filter is late.");
+				}
+				else
+				{
+					ms_debug("[Camera2 Capture] Skipped frame: filter is late");
+				}
 			}
-			
+
 			AImage_delete(image);
-		} else {
+		}
+		else
+		{
 			ms_error("[Camera2 Capture] Couldn't acquire image, image ptr is %p, error is %i", image, status);
 		}
-	} else {
+	}
+	else
+	{
 		ms_error("[Camera2 Capture] Aquired image is in wrong format %d, expected %d", format, d->captureFormat);
 	}
 	ms_mutex_unlock(&d->imageReaderMutex);
@@ -586,11 +699,13 @@ static void android_camera2_capture_on_image_available(void *context, AImageRead
 
 /* ************************************************************************* */
 
-static void android_camera2_capture_create_preview(AndroidCamera2Context *d) {
-    ms_message("[Camera2 Capture] Creating preview");
-   	JNIEnv *jenv = ms_get_jni_env();
+static void android_camera2_capture_create_preview(AndroidCamera2Context *d)
+{
+	ms_message("[Camera2 Capture] Creating preview");
+	JNIEnv *jenv = ms_get_jni_env();
 
-	if (!d->surface) {
+	if (!d->surface)
+	{
 		ms_error("[Camera2 Capture] Can't create preview window, no surface");
 		return;
 	}
@@ -598,153 +713,186 @@ static void android_camera2_capture_create_preview(AndroidCamera2Context *d) {
 	d->nativeWindow = ANativeWindow_fromSurface(jenv, d->surface);
 }
 
-static void android_camera2_capture_destroy_preview(AndroidCamera2Context *d) {
-    ms_message("[Camera2 Capture] Destroying preview");
-	if (d->nativeWindow) {
+static void android_camera2_capture_destroy_preview(AndroidCamera2Context *d)
+{
+	ms_message("[Camera2 Capture] Destroying preview");
+	if (d->nativeWindow)
+	{
 		ANativeWindow_release(d->nativeWindow);
 		d->nativeWindow = nullptr;
-    	ms_message("[Camera2 Capture] Preview window destroyed");
+		ms_message("[Camera2 Capture] Preview window destroyed");
 	}
 
-	if (d->surface) {
+	if (d->surface)
+	{
 		JNIEnv *env = ms_get_jni_env();
 		env->DeleteGlobalRef(d->surface);
 		d->surface = nullptr;
-    	ms_message("[Camera2 Capture] Preview surface destroyed");
+		ms_message("[Camera2 Capture] Preview surface destroyed");
 	}
 }
 
-static void android_camera2_capture_open_camera(AndroidCamera2Context *d) {
+static void android_camera2_capture_open_camera(AndroidCamera2Context *d)
+{
 	ms_message("[Camera2 Capture] Opening camera");
 	d->deviceStateCallbacks.context = d;
 	d->deviceStateCallbacks.onDisconnected = android_camera2_capture_device_on_disconnected;
 	d->deviceStateCallbacks.onError = android_camera2_capture_device_on_error;
 
-	if (!d->device) {
+	if (!d->device)
+	{
 		ms_error("[Camera2 Capture] Can't open camera, no device selected");
 		return;
 	}
 
 	ACameraDevice *cameraDevice;
 	camera_status_t camera_status = ACameraManager_openCamera(d->cameraManager, d->device->camId, &d->deviceStateCallbacks, &cameraDevice);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Failed to open camera %s, error is %s", d->device->camId, android_camera2_status_to_string(camera_status));
 		return;
-    }
-	
+	}
+
 	ms_message("[Camera2 Capture] Camera %s opened", d->device->camId);
 	d->cameraDevice = cameraDevice;
 }
 
-static void android_camera2_capture_close_camera(AndroidCamera2Context *d) {
+static void android_camera2_capture_close_camera(AndroidCamera2Context *d)
+{
 	ms_message("[Camera2 Capture] Closing camera");
 
-    if (d->cameraDevice) {
-        camera_status_t camera_status = ACameraDevice_close(d->cameraDevice);
-        if (camera_status != ACAMERA_OK) {
-            ms_error("[Camera2 Capture] Failed to close camera %s, error is %s", d->device->camId, android_camera2_status_to_string(camera_status));
-        } else {
+	if (d->cameraDevice)
+	{
+		camera_status_t camera_status = ACameraDevice_close(d->cameraDevice);
+		if (camera_status != ACAMERA_OK)
+		{
+			ms_error("[Camera2 Capture] Failed to close camera %s, error is %s", d->device->camId, android_camera2_status_to_string(camera_status));
+		}
+		else
+		{
 			ms_message("[Camera2 Capture] Camera closed %s", d->device->camId);
 		}
-        d->cameraDevice = nullptr;
-    }
+		d->cameraDevice = nullptr;
+	}
 }
 
-static void android_camera2_check_configuration_ok(AndroidCamera2Context *d) {
-	if (d->nativeWindowId == 0) {
+static void android_camera2_check_configuration_ok(AndroidCamera2Context *d)
+{
+	if (d->nativeWindowId == 0)
+	{
 		ms_error("[Camera2 Capture] TextureView wasn't set (was core.setNativePreviewWindowId() called?)");
 		return;
 	}
-	if (d->surface == nullptr) {
+	if (d->surface == nullptr)
+	{
 		ms_error("[Camera2 Capture] Failed to get a valid object to display camera preview from native window id [%p]", d->nativeWindowId);
 		return;
 	}
-	if (d->captureSize.width == 0 || d->captureSize.height == 0) {
+	if (d->captureSize.width == 0 || d->captureSize.height == 0)
+	{
 		ms_error("[Camera2 Capture] Capture size hasn't been configured yet");
 		return;
 	}
 	d->configured = true;
 }
 
-static void android_camera2_capture_start(AndroidCamera2Context *d) {
+static void android_camera2_capture_start(AndroidCamera2Context *d)
+{
 	ms_message("[Camera2 Capture] Starting capture");
 	camera_status_t camera_status = ACAMERA_OK;
 
 	AndroidSoundUtils *soundUtils = ms_factory_get_android_sound_utils(d->filter->factory);
 	bool permissionGranted = ms_android_sound_utils_is_camera_permission_granted(soundUtils);
-	if (!permissionGranted) {
+	if (!permissionGranted)
+	{
 		ms_error("[Camera2 Capture] CAMERA permission hasn't been granted!");
 		return;
 	}
 
-	if (d->capturing) {
+	if (d->capturing)
+	{
 		ms_warning("[Camera2 Capture] Capture was already started, ignoring...");
 		return;
 	}
-	if (!d->configured) {
+	if (!d->configured)
+	{
 		ms_warning("[Camera2 Capture] Filter configuration not finished, ignoring...");
 		return;
 	}
-	
-	if (!d->nativeWindow && d->surface) {
+
+	if (!d->nativeWindow && d->surface)
+	{
 		android_camera2_capture_create_preview(d);
 	}
-	if (!d->cameraDevice) {
+	if (!d->cameraDevice)
+	{
 		android_camera2_capture_open_camera(d);
 	}
 
-	if (!d->cameraDevice) {
-		ms_error("[Camera2 Capture] Couldn't open camera %s, aborting capture",  d->device->camId);
+	if (!d->cameraDevice)
+	{
+		ms_error("[Camera2 Capture] Couldn't open camera %s, aborting capture", d->device->camId);
 		return;
 	}
 
 	camera_status = ACaptureSessionOutputContainer_create(&d->captureSessionOutputContainer);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Failed to create capture session output container, error is %s", android_camera2_status_to_string(camera_status));
 	}
 	d->captureSessionStateCallbacks.onReady = android_camera2_capture_session_on_ready;
 	d->captureSessionStateCallbacks.onActive = android_camera2_capture_session_on_active;
 	d->captureSessionStateCallbacks.onClosed = android_camera2_capture_session_on_closed;
-	
+
 	camera_status = ACameraDevice_createCaptureRequest(d->cameraDevice, TEMPLATE_PREVIEW, &d->capturePreviewRequest);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Failed to create capture preview request, error is %s", android_camera2_status_to_string(camera_status));
 	}
-	
+
 	int whitebalance = d->filter->factory->wbcmanager->desired_whitebalance;
-	if (whitebalance >= 0) {
-		if (whitebalance <= 8) {
+	if (whitebalance >= 0)
+	{
+		if (whitebalance <= 8)
+		{
 			uint8_t awbMode = whitebalance;
 			// See https://developer.android.com/ndk/reference/group/camera#group___camera_1gaadc7ea8989b8b00ee2a7670fb3a7221b for possible values
 			ms_message("[Camera2 Capture] Asking for ACAMERA_CONTROL_AWB_MODE with value [%i]", whitebalance);
 			ACaptureRequest_setEntry_u8(d->capturePreviewRequest, ACAMERA_CONTROL_AWB_MODE, 1, &awbMode);
-		} else {
+		}
+		else
+		{
 			ms_error("[Camera2 Capture] Configured whitebalance value is [%i], authorized values are comprised between 0 and 8", whitebalance);
 		}
 	}
 
 	camera_status = ACameraOutputTarget_create(d->nativeWindow, &d->cameraPreviewOutputTarget);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Failed to create output target, error is %s", android_camera2_status_to_string(camera_status));
 	}
 
 	camera_status = ACaptureRequest_addTarget(d->capturePreviewRequest, d->cameraPreviewOutputTarget);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Failed to add output target to capture request, error is %s", android_camera2_status_to_string(camera_status));
 	}
 
 	camera_status = ACaptureSessionOutput_create(d->nativeWindow, &d->sessionPreviewOutput);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Failed to create capture session output, error is %s", android_camera2_status_to_string(camera_status));
 	}
 
 	camera_status = ACaptureSessionOutputContainer_add(d->captureSessionOutputContainer, d->sessionPreviewOutput);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Failed to add capture session output to container, error is %s", android_camera2_status_to_string(camera_status));
 	}
 
 	media_status_t status = AImageReader_new(d->captureSize.width, d->captureSize.height, d->captureFormat, 2, &d->imageReader);
-	if (status != AMEDIA_OK) {
+	if (status != AMEDIA_OK)
+	{
 		ms_error("[Camera2 Capture] Failed to create image reader, error is %i", status);
 		d->configured = false;
 		return;
@@ -754,15 +902,17 @@ static void android_camera2_capture_start(AndroidCamera2Context *d) {
 	d->imageReaderListener = new AImageReader_ImageListener();
 	d->imageReaderListener->context = d;
 	d->imageReaderListener->onImageAvailable = android_camera2_capture_on_image_available;
-  	status = AImageReader_setImageListener(d->imageReader, d->imageReaderListener);
-	if (status != AMEDIA_OK) {
+	status = AImageReader_setImageListener(d->imageReader, d->imageReaderListener);
+	if (status != AMEDIA_OK)
+	{
 		ms_error("[Camera2 Capture] Failed to set image listener, error is %i", status);
 		d->configured = false;
 		return;
 	}
 
 	status = AImageReader_getWindow(d->imageReader, &d->captureWindow);
-	if (status != AMEDIA_OK) {
+	if (status != AMEDIA_OK)
+	{
 		ms_error("[Camera2 Capture] Capture window couldn't be acquired, error is %i", status);
 		d->configured = false;
 		return;
@@ -770,42 +920,48 @@ static void android_camera2_capture_start(AndroidCamera2Context *d) {
 	ANativeWindow_acquire(d->captureWindow);
 
 	camera_status = ACameraOutputTarget_create(d->captureWindow, &d->cameraCaptureOutputTarget);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Couldn't create output target, error is %s", android_camera2_status_to_string(camera_status));
 		d->configured = false;
 		return;
 	}
 
 	camera_status = ACaptureRequest_addTarget(d->capturePreviewRequest, d->cameraCaptureOutputTarget);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Couldn't add output target to capture request, error is %s", android_camera2_status_to_string(camera_status));
 		d->configured = false;
 		return;
 	}
 
 	camera_status = ACaptureSessionOutput_create(d->captureWindow, &d->sessionCaptureOutput);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Couldn't create capture session output, error is %s", android_camera2_status_to_string(camera_status));
 		d->configured = false;
 		return;
 	}
 
 	camera_status = ACaptureSessionOutputContainer_add(d->captureSessionOutputContainer, d->sessionCaptureOutput);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Couldn't add capture session output to container, error is %s", android_camera2_status_to_string(camera_status));
 		d->configured = false;
 		return;
 	}
 
 	camera_status = ACameraDevice_createCaptureSession(d->cameraDevice, d->captureSessionOutputContainer, &d->captureSessionStateCallbacks, &d->captureSession);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Couldn't create capture session, error is %s", android_camera2_status_to_string(camera_status));
 		d->configured = false;
 		return;
 	}
 
 	camera_status = ACameraCaptureSession_setRepeatingRequest(d->captureSession, NULL, 1, &d->capturePreviewRequest, NULL);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Couldn't set capture session repeating request, error is %s", android_camera2_status_to_string(camera_status));
 		d->configured = false;
 		return;
@@ -815,14 +971,16 @@ static void android_camera2_capture_start(AndroidCamera2Context *d) {
 	ms_message("[Camera2 Capture] Capture started");
 }
 
-static void android_camera2_capture_stop(AndroidCamera2Context *d) {
+static void android_camera2_capture_stop(AndroidCamera2Context *d)
+{
 	ms_message("[Camera2 Capture] Stopping capture");
 
 	ms_filter_lock(d->filter);
 	d->configured = false;
 	ms_filter_unlock(d->filter);
 
-	if (!d->capturing) {
+	if (!d->capturing)
+	{
 		ms_warning("[Camera2 Capture] Capture was already stopped, ignoring...");
 		return;
 	}
@@ -831,28 +989,32 @@ static void android_camera2_capture_stop(AndroidCamera2Context *d) {
 	ms_mutex_lock(&d->imageReaderMutex);
 
 	AImageReader_ImageListener nullListener = {nullptr, nullptr};
-  	media_status_t status = AImageReader_setImageListener(d->imageReader, &nullListener);
-	if (status != AMEDIA_OK) {
+	media_status_t status = AImageReader_setImageListener(d->imageReader, &nullListener);
+	if (status != AMEDIA_OK)
+	{
 		ms_error("[Camera2 Capture] Failed to set null image listener, error is %i", status);
 	}
-	if (d->imageReaderListener) {
+	if (d->imageReaderListener)
+	{
 		delete d->imageReaderListener;
 		d->imageReaderListener = nullptr;
 	}
 	ms_mutex_unlock(&d->imageReaderMutex);
-	
 
 	// Seems to provoke an ANR on some devices if the camera close is done after the capture session
 	android_camera2_capture_close_camera(d);
 
-	if (d->captureSession) {
+	if (d->captureSession)
+	{
 		camera_status_t camera_status = ACameraCaptureSession_abortCaptures(d->captureSession);
-		if (camera_status != ACAMERA_OK) {
+		if (camera_status != ACAMERA_OK)
+		{
 			ms_error("[Camera2 Capture] Couldn't abort captures on session, error is %s", android_camera2_status_to_string(camera_status));
 		}
 
 		camera_status = ACameraCaptureSession_stopRepeating(d->captureSession);
-		if (camera_status != ACAMERA_OK) {
+		if (camera_status != ACAMERA_OK)
+		{
 			ms_error("[Camera2 Capture] Couldn't stop repeating session, error is %s", android_camera2_status_to_string(camera_status));
 		}
 
@@ -861,43 +1023,50 @@ static void android_camera2_capture_stop(AndroidCamera2Context *d) {
 		ms_message("[Camera2 Capture] Capture session closed");
 	}
 
-	if (d->capturePreviewRequest) {
+	if (d->capturePreviewRequest)
+	{
 		ACaptureRequest_removeTarget(d->capturePreviewRequest, d->cameraCaptureOutputTarget);
 		ACaptureRequest_free(d->capturePreviewRequest);
 		d->capturePreviewRequest = nullptr;
 		ms_message("[Camera2 Capture] Preview request freed");
-    }
+	}
 
-	if (d->cameraCaptureOutputTarget) {
+	if (d->cameraCaptureOutputTarget)
+	{
 		ACameraOutputTarget_free(d->cameraCaptureOutputTarget);
 		d->cameraCaptureOutputTarget = nullptr;
 		ms_message("[Camera2 Capture] Camera output target freed");
-    }
+	}
 
-	if (d->cameraPreviewOutputTarget) {
+	if (d->cameraPreviewOutputTarget)
+	{
 		ACameraOutputTarget_free(d->cameraPreviewOutputTarget);
 		d->cameraPreviewOutputTarget = nullptr;
 		ms_message("[Camera2 Capture] Preview preview output target freed");
-    }
+	}
 
-	if (d->captureSessionOutputContainer) {
+	if (d->captureSessionOutputContainer)
+	{
 		ms_message("[Camera2 Capture] Freeing capture session output container");
 
-		if (d->sessionCaptureOutput) {
+		if (d->sessionCaptureOutput)
+		{
 			ACaptureSessionOutputContainer_remove(d->captureSessionOutputContainer, d->sessionCaptureOutput);
 			ACaptureSessionOutput_free(d->sessionCaptureOutput);
 			d->sessionCaptureOutput = nullptr;
 			ms_message("[Camera2 Capture] Capture session output freed");
 		}
 
-		if (d->sessionPreviewOutput) {
+		if (d->sessionPreviewOutput)
+		{
 			ACaptureSessionOutputContainer_remove(d->captureSessionOutputContainer, d->sessionPreviewOutput);
 			ACaptureSessionOutput_free(d->sessionPreviewOutput);
 			d->sessionPreviewOutput = nullptr;
 			ms_message("[Camera2 Capture] Capture session preview output freed");
 		}
 
-		if (d->captureWindow) {
+		if (d->captureWindow)
+		{
 			ANativeWindow_release(d->captureWindow);
 			d->captureWindow = nullptr;
 			ms_message("[Camera2 Capture] Capture window released");
@@ -908,7 +1077,8 @@ static void android_camera2_capture_stop(AndroidCamera2Context *d) {
 		ms_message("[Camera2 Capture] Capture session output container freed");
 	}
 	ms_mutex_lock(&d->imageReaderMutex);
-	if (d->imageReader) {
+	if (d->imageReader)
+	{
 		AImageReader_delete(d->imageReader);
 		d->imageReader = nullptr;
 		ms_message("[Camera2 Capture] Image reader deleted");
@@ -922,14 +1092,16 @@ static void android_camera2_capture_stop(AndroidCamera2Context *d) {
 
 /* ************************************************************************* */
 
-static void android_camera2_capture_init(MSFilter *f) {
+static void android_camera2_capture_init(MSFilter *f)
+{
 	ms_message("[Camera2 Capture] Filter init");
-	AndroidCamera2Context* d = new AndroidCamera2Context(f);
+	AndroidCamera2Context *d = new AndroidCamera2Context(f);
 	sharedContext.setContext(d);
 	f->data = d;
 }
 
-static void android_camera2_capture_preprocess(MSFilter *f) {
+static void android_camera2_capture_preprocess(MSFilter *f)
+{
 	ms_message("[Camera2 Capture] Filter preprocess");
 	AndroidCamera2Context *d = (AndroidCamera2Context *)f->data;
 
@@ -939,52 +1111,60 @@ static void android_camera2_capture_preprocess(MSFilter *f) {
 	ms_filter_unlock(f);
 
 	ms_mutex_lock(&d->mutex);
-	if (d->frame) {
+	if (d->frame)
+	{
 		freemsg(d->frame);
 		d->frame = NULL;
 	}
 	ms_mutex_unlock(&d->mutex);
 }
 
-static void android_camera2_capture_process(MSFilter *f) {
+static void android_camera2_capture_process(MSFilter *f)
+{
 	AndroidCamera2Context *d = (AndroidCamera2Context *)f->data;
 	mblk_t *frame;
-	
-	
-	if (!d->capturing && d->configured) {
+
+	if (!d->capturing && d->configured)
+	{
 		ms_filter_lock(f);
-		if (!d->capturing && d->configured) android_camera2_capture_start(d);
+		if (!d->capturing && d->configured)
+			android_camera2_capture_start(d);
 		ms_filter_unlock(f);
 	}
-	
-	
+
 	ms_mutex_lock(&d->mutex);
 	frame = d->frame;
-	if (frame) d->frame = NULL;
+	if (frame)
+		d->frame = NULL;
 	ms_mutex_unlock(&d->mutex);
-	if (frame) {
+	if (frame)
+	{
 		ms_average_fps_update(&d->averageFps, f->ticker->time);
 		mblk_set_timestamp_info(frame, f->ticker->time * 90);
 		ms_queue_put(f->outputs[0], frame);
 	}
 }
 
-static void android_camera2_capture_postprocess(MSFilter *f) {
+static void android_camera2_capture_postprocess(MSFilter *f)
+{
 	ms_message("[Camera2 Capture] Filter postprocess");
 	AndroidCamera2Context *d = (AndroidCamera2Context *)f->data;
 }
 
-static void android_camera2_capture_uninit(MSFilter *f) {
+static void android_camera2_capture_uninit(MSFilter *f)
+{
 	ms_message("[Camera2 Capture] Filter uninit");
 	AndroidCamera2Context *d = (AndroidCamera2Context *)f->data;
 
 	sharedContext.acquireContextLocked();
 
-	if (d->capturing) {
+	if (d->capturing)
+	{
 		android_camera2_capture_stop(d);
 	}
 
-	if (d->nativeWindowId != 0) {
+	if (d->nativeWindowId != 0)
+	{
 		JNIEnv *env = ms_get_jni_env();
 		env->DeleteGlobalRef(d->nativeWindowId);
 		d->nativeWindowId = 0;
@@ -992,7 +1172,8 @@ static void android_camera2_capture_uninit(MSFilter *f) {
 	}
 
 	ms_mutex_lock(&d->mutex);
-	if (d->frame) {
+	if (d->frame)
+	{
 		freemsg(d->frame);
 		d->frame = NULL;
 	}
@@ -1005,10 +1186,11 @@ static void android_camera2_capture_uninit(MSFilter *f) {
 
 /* ************************************************************************* */
 
-static int android_camera2_capture_set_fps(MSFilter *f, void *arg) {
+static int android_camera2_capture_set_fps(MSFilter *f, void *arg)
+{
 	AndroidCamera2Context *d = (AndroidCamera2Context *)f->data;
-	d->fps = *((float*)arg);
-	
+	d->fps = *((float *)arg);
+
 	ms_filter_lock(f);
 	snprintf(d->fps_context, sizeof(d->fps_context), "Captured mean fps=%%f, expected=%f", d->fps);
 	ms_video_init_framerate_controller(&d->fpsControl, d->fps);
@@ -1017,70 +1199,86 @@ static int android_camera2_capture_set_fps(MSFilter *f, void *arg) {
 	return 0;
 }
 
-static int android_camera2_capture_get_fps(MSFilter *f, void *arg) {
+static int android_camera2_capture_get_fps(MSFilter *f, void *arg)
+{
 	AndroidCamera2Context *d = (AndroidCamera2Context *)f->data;
-	*((float*)arg) = ms_average_fps_get(&d->averageFps);
+	*((float *)arg) = ms_average_fps_get(&d->averageFps);
 	return 0;
 }
 
-static void android_camera2_capture_choose_best_configurations(AndroidCamera2Context *d) {
+static void android_camera2_capture_choose_best_configurations(AndroidCamera2Context *d)
+{
 	ms_message("[Camera2 Capture] Listing camera %s configurations", d->device->camId);
 
-    ACameraMetadata *cameraMetadata = nullptr;
+	ACameraMetadata *cameraMetadata = nullptr;
 	camera_status_t camera_status = ACameraManager_getCameraCharacteristics(d->cameraManager, d->device->camId, &cameraMetadata);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Failed to get camera characteristics, error is %s", android_camera2_status_to_string(camera_status));
 		return;
 	}
 
 	ACameraMetadata_const_entry supportedFpsRanges;
 	ACameraMetadata_getConstEntry(cameraMetadata, ACAMERA_CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES, &supportedFpsRanges);
-	for (int i = 0; i < supportedFpsRanges.count; i += 2) {
+	for (int i = 0; i < supportedFpsRanges.count; i += 2)
+	{
 		int32_t min = supportedFpsRanges.data.i32[i];
 		int32_t max = supportedFpsRanges.data.i32[i + 1];
 		ms_message("[Camera2 Capture] Supported FPS range: [%d-%d]", min, max);
 	}
-	
+
 	ACameraMetadata_const_entry scaler;
 	ACameraMetadata_getConstEntry(cameraMetadata, ACAMERA_SCALER_AVAILABLE_STREAM_CONFIGURATIONS, &scaler);
-	
+
 	MSVideoSize backupSize;
 	backupSize.width = 0;
 	backupSize.height = 0;
 	double askedRatio = d->captureSize.width * d->captureSize.height;
 	bool found = false;
-	
-	for (int i = 0; i < scaler.count; i += 4) {
+
+	for (int i = 0; i < scaler.count; i += 4)
+	{
 		int32_t input = scaler.data.i32[i + 3];
 		int32_t format = scaler.data.i32[i + 0];
-		if (input) continue;
+		if (input)
+			continue;
 
-		if (format == d->captureFormat) {
+		if (format == d->captureFormat)
+		{
 			int32_t width = scaler.data.i32[i + 1];
 			int32_t height = scaler.data.i32[i + 2];
 			double currentSizeRatio = width * height;
 			ms_message("[Camera2 Capture] Available size width [%d], height [%d] for requested format [%d]", width, height, format);
 
-			if (width == d->captureSize.width && height == d->captureSize.height) {
+			if (width == d->captureSize.width && height == d->captureSize.height)
+			{
 				found = true;
-			} else {
+			}
+			else
+			{
 				double backupRatio = backupSize.width * backupSize.height;
-				if (backupRatio == 0 || fabs(askedRatio - currentSizeRatio) < fabs(askedRatio - backupRatio)) {
+				if (backupRatio == 0 || fabs(askedRatio - currentSizeRatio) < fabs(askedRatio - backupRatio))
+				{
 					// Current resolution is closer to the one we want than the one in backup, update backup
 					backupSize.width = width;
 					backupSize.height = height;
 				}
 			}
-		} else {
+		}
+		else
+		{
 			int32_t width = scaler.data.i32[i + 1];
 			int32_t height = scaler.data.i32[i + 2];
 			ms_debug("[Camera2 Capture] Available size width [%d], height [%d] for format [%d]", width, height, format);
 		}
 	}
 
-	if (found) {
+	if (found)
+	{
 		ms_message("[Camera2 Capture] Found exact match for our required size of [%ix%i]", d->captureSize.width, d->captureSize.height);
-	} else {
+	}
+	else
+	{
 		// Asked resolution not found
 		d->captureSize.width = backupSize.width;
 		d->captureSize.height = backupSize.height;
@@ -1090,82 +1288,101 @@ static void android_camera2_capture_choose_best_configurations(AndroidCamera2Con
 	ACameraMetadata_free(cameraMetadata);
 }
 
-static void android_camera2_capture_rotate_video_preview_if_possible(AndroidCamera2Context *d) {
+static void android_camera2_capture_rotate_video_preview_if_possible(AndroidCamera2Context *d)
+{
 	JNIEnv *env = ms_get_jni_env();
 
 	jobject surfaceTexture = d->nativeWindowId;
-	if (surfaceTexture == nullptr) return;
+	if (surfaceTexture == nullptr)
+		return;
 
 	jclass captureTextureViewClass = env->FindClass("org/linphone/mediastream/video/capture/CaptureTextureView");
-	if (env->IsInstanceOf(surfaceTexture, captureTextureViewClass)) {
+	if (env->IsInstanceOf(surfaceTexture, captureTextureViewClass))
+	{
 		ms_message("[Camera2 Capture] NativePreviewWindowId [%p] is a CaptureTextureView", surfaceTexture);
 		jmethodID setRotation = env->GetMethodID(captureTextureViewClass, "setRotation", "(I)V");
 		int rotation = d->rotation;
 		ms_message("[Camera2 Capture] Apply rotation of [%i] to CaptureTextureView", rotation);
 		env->CallVoidMethod(d->nativeWindowId, setRotation, rotation);
-	} else {
+	}
+	else
+	{
 		ms_warning("[Camera2 Capture] NativePreviewWindowId [%p] isn't a CaptureTextureView, can't rotate!", surfaceTexture);
 	}
 }
 
-static void android_camera2_capture_create_surface_from_surface_texture(AndroidCamera2Context *d) {
+static void android_camera2_capture_create_surface_from_surface_texture(AndroidCamera2Context *d)
+{
 	JNIEnv *env = ms_get_jni_env();
 	jobject surface = nullptr;
 	jobject surfaceTexture = d->nativeWindowId;
 
 	jclass surfaceTextureClass = env->FindClass("android/graphics/SurfaceTexture");
-	if (!surfaceTextureClass) {
+	if (!surfaceTextureClass)
+	{
 		ms_error("[Camera2 Capture] Could not find android.graphics.SurfaceTexture class");
 		return;
 	}
 
 	jclass surfaceClass = env->FindClass("android/view/Surface");
-	if (!surfaceClass) {
+	if (!surfaceClass)
+	{
 		ms_error("[Camera2 Capture] Could not find android.view.Surface class");
 		return;
 	}
 
 	jclass textureViewClass = env->FindClass("android/view/TextureView");
-	if (!textureViewClass) {
+	if (!textureViewClass)
+	{
 		ms_error("[Camera2 Capture] Could not find android.view.TextureView class");
 		return;
 	}
 
-	if (env->IsInstanceOf(surfaceTexture, surfaceClass)) {
+	if (env->IsInstanceOf(surfaceTexture, surfaceClass))
+	{
 		ms_message("[Camera2 Capture] NativePreviewWindowId [%p] is a Surface, using it directly", surfaceTexture);
 		d->surface = (jobject)env->NewGlobalRef(surfaceTexture);
 		return;
 	}
 
-	if (env->IsInstanceOf(surfaceTexture, textureViewClass)) {
+	if (env->IsInstanceOf(surfaceTexture, textureViewClass))
+	{
 		ms_message("[Camera2 Capture] NativePreviewWindowId [%p] is a TextureView", surfaceTexture);
 
 		android_camera2_capture_rotate_video_preview_if_possible(d);
 
 		jmethodID getSurfaceTexture = env->GetMethodID(textureViewClass, "getSurfaceTexture", "()Landroid/graphics/SurfaceTexture;");
 		surfaceTexture = env->CallObjectMethod(d->nativeWindowId, getSurfaceTexture);
-		if (surfaceTexture == nullptr) {
+		if (surfaceTexture == nullptr)
+		{
 			ms_error("[Camera2 Capture] TextureView isn't available !");
 			return;
 		}
 		ms_message("[Camera2 Capture] Got SurfaceTexture [%p] from TextureView [%p]", surfaceTexture, d->nativeWindowId);
-	} else {
+	}
+	else
+	{
 		ms_warning("[Camera2 Capture] SurfaceTexture [%p] isn't a TextureView", surfaceTexture);
 	}
 
-	if (surfaceTexture != nullptr) {
-		if (d->captureSize.width != 0 && d->captureSize.height != 0) {
+	if (surfaceTexture != nullptr)
+	{
+		if (d->captureSize.width != 0 && d->captureSize.height != 0)
+		{
 			jmethodID setDefaultBufferSize = env->GetMethodID(surfaceTextureClass, "setDefaultBufferSize", "(II)V");
 			env->CallVoidMethod(surfaceTexture, setDefaultBufferSize, d->captureSize.width, d->captureSize.height);
 			ms_message("[Camera2 Capture] Set default buffer size for SurfaceTexture [%p] to [%ix%i]", surfaceTexture, d->captureSize.width, d->captureSize.height);
-		} else {
+		}
+		else
+		{
 			ms_warning("[Camera2 Capture] SurfaceTexture buffer size not available yet, aborting for now, will come back later");
 			d->surface = nullptr;
 			return;
 		}
 	}
 
-	if (surfaceTexture == nullptr) {
+	if (surfaceTexture == nullptr)
+	{
 		ms_error("[Camera2 Capture] SurfaceTexture is null, can't create a Surface!");
 		return;
 	}
@@ -1173,16 +1390,18 @@ static void android_camera2_capture_create_surface_from_surface_texture(AndroidC
 	ms_message("[Camera2 Capture] Creating Surface from SurfaceTexture [%p]", surfaceTexture);
 	jmethodID ctor = env->GetMethodID(surfaceClass, "<init>", "(Landroid/graphics/SurfaceTexture;)V");
 	surface = env->NewObject(surfaceClass, ctor, surfaceTexture);
-	if (!surface) {
+	if (!surface)
+	{
 		ms_error("[Camera2 Capture] Could not instanciate android.view.Surface object");
 		return;
 	}
-	
+
 	d->surface = (jobject)env->NewGlobalRef(surface);
-	ms_message("[Camera2 Capture] Got Surface [%p] from SurfaceTexture [%p]",  d->surface, surfaceTexture);
+	ms_message("[Camera2 Capture] Got Surface [%p] from SurfaceTexture [%p]", d->surface, surfaceTexture);
 }
 
-static int android_camera2_capture_set_surface_texture(MSFilter *f, void *arg) {
+static int android_camera2_capture_set_surface_texture(MSFilter *f, void *arg)
+{
 	AndroidCamera2Context *d = (AndroidCamera2Context *)f->data;
 	unsigned long id = *(unsigned long *)arg;
 	jobject nativeWindowId = (jobject)id;
@@ -1193,93 +1412,115 @@ static int android_camera2_capture_set_surface_texture(MSFilter *f, void *arg) {
 	ms_filter_unlock(f);
 
 	ms_message("[Camera2 Capture] New native window ptr is [%p], current one is [%p]", nativeWindowId, currentWindowId);
-	if (id == 0) {
-		if (currentWindowId) {
+	if (id == 0)
+	{
+		if (currentWindowId)
+		{
 			android_camera2_capture_stop(d);
 			env->DeleteGlobalRef(currentWindowId);
 			d->nativeWindowId = nullptr;
 		}
-	} else if (!env->IsSameObject(currentWindowId, nativeWindowId)) {
-		if (currentWindowId) {
+	}
+	else if (!env->IsSameObject(currentWindowId, nativeWindowId))
+	{
+		if (currentWindowId)
+		{
 			android_camera2_capture_stop(d);
 			env->DeleteGlobalRef(currentWindowId);
 		}
-		
+
 		d->nativeWindowId = env->NewGlobalRef(nativeWindowId);
 		android_camera2_capture_create_surface_from_surface_texture(d);
 		android_camera2_capture_rotate_video_preview_if_possible(d);
-		
+
 		ms_filter_lock(f);
 		android_camera2_check_configuration_ok(d);
 		ms_filter_unlock(f);
 
 		ms_error("New native window ptr [%p] [%p]", d->nativeWindowId, nativeWindowId);
 
-		if (d->previewSize.width != 0 && d->previewSize.height != 0) {
+		if (d->previewSize.width != 0 && d->previewSize.height != 0)
+		{
 			ms_filter_notify(f, MS_CAMERA_PREVIEW_SIZE_CHANGED, &d->previewSize);
 		}
-	} else {
+	}
+	else
+	{
 		ms_message("[Camera2 Capture] New native window is the same as the current one, skipping...");
 	}
 
-	return 0; 
+	return 0;
 }
 
-static int android_camera2_set_image_preprocessor(MSFilter *f, void *arg) {
+static int android_camera2_set_image_preprocessor(MSFilter *f, void *arg)
+{
 	AndroidCamera2Context *d = (AndroidCamera2Context *)f->data;
 	unsigned long ip = *(unsigned long *)arg;
 	jobject imagePreprocessor = (jobject)ip;
 	JNIEnv *env = ms_get_jni_env();
-	
+
 	ms_filter_lock(f);
 	jobject currentImagePreprocessor = d->imagePreprocessor;
 	ms_filter_unlock(f);
-	
+
 	ms_message("[Camera2 Capture] New image preprocessor [%p], current one is [%p], arg is %p", imagePreprocessor, d->imagePreprocessor, arg);
-	
-	if (ip == 0) {
-		if (currentImagePreprocessor) {
+
+	if (ip == 0)
+	{
+		if (currentImagePreprocessor)
+		{
 			env->DeleteGlobalRef(currentImagePreprocessor);
 			d->imagePreprocessor = nullptr;
 		}
-	} else if (!env->IsSameObject(currentImagePreprocessor, imagePreprocessor)) {
-		if (currentImagePreprocessor != nullptr) {
+	}
+	else if (!env->IsSameObject(currentImagePreprocessor, imagePreprocessor))
+	{
+		if (currentImagePreprocessor != nullptr)
+		{
 			env->DeleteGlobalRef(currentImagePreprocessor);
 		}
-		
+
 		d->imagePreprocessor = env->NewGlobalRef(imagePreprocessor);
-		
+
 		ms_error("Set new image preprocessor [%p] [%p]", d->imagePreprocessor, imagePreprocessor);
-	} else {
+	}
+	else
+	{
 		ms_message("[Camera2 Capture] New image preprocessor is the same as the current one, skipping...");
 	}
-	
+
 	return 0;
 }
 
-static void android_camera2_capture_update_preview_size(AndroidCamera2Context *d) {
+static void android_camera2_capture_update_preview_size(AndroidCamera2Context *d)
+{
 	int orientation = android_camera2_capture_get_orientation(d);
-	if (orientation % 180 == 0) {
+	if (orientation % 180 == 0)
+	{
 		ms_message("[Camera2 Capture] Device rotation [%i] is portrait, use capture width/height for preview width/height", orientation);
 		d->previewSize.width = d->captureSize.width;
 		d->previewSize.height = d->captureSize.height;
-	} else {
+	}
+	else
+	{
 		ms_message("[Camera2 Capture] Device rotation [%i] is landscape, use capture width/height for preview height/width", orientation);
 		d->previewSize.width = d->captureSize.height;
 		d->previewSize.height = d->captureSize.width;
 	}
 }
 
-static int android_camera2_capture_set_vsize(MSFilter *f, void* arg) {
+static int android_camera2_capture_set_vsize(MSFilter *f, void *arg)
+{
 	AndroidCamera2Context *d = (AndroidCamera2Context *)f->data;
-	MSVideoSize requestedSize = *(MSVideoSize*)arg;
+	MSVideoSize requestedSize = *(MSVideoSize *)arg;
 	ms_message("[Camera2 Capture] New requested size is [%i/%i]", requestedSize.width, requestedSize.height);
 
-	if (d->captureSize.width == requestedSize.width && d->captureSize.height == requestedSize.height) {
+	if (d->captureSize.width == requestedSize.width && d->captureSize.height == requestedSize.height)
+	{
 		ms_warning("[Camera2 Capture] Newly requested size is the same as current one, skipping");
 		return -1;
 	}
-	
+
 	MSVideoSize oldSize;
 	oldSize.width = d->captureSize.width;
 	oldSize.height = d->captureSize.height;
@@ -1289,14 +1530,16 @@ static int android_camera2_capture_set_vsize(MSFilter *f, void* arg) {
 	android_camera2_capture_choose_best_configurations(d);
 	android_camera2_capture_update_preview_size(d);
 
-	if (d->previewSize.width != 0 && d->previewSize.height != 0) {
+	if (d->previewSize.width != 0 && d->previewSize.height != 0)
+	{
 		ms_filter_notify(f, MS_CAMERA_PREVIEW_SIZE_CHANGED, &d->previewSize);
 	}
 
-	ms_message("[Camera2 Capture] Previous preview size was [%i/%i], new size is [%i/%i]", 
-		oldSize.width, oldSize.height, d->previewSize.width, d->previewSize.height);
+	ms_message("[Camera2 Capture] Previous preview size was [%i/%i], new size is [%i/%i]",
+			   oldSize.width, oldSize.height, d->previewSize.width, d->previewSize.height);
 
-	if (d->surface == nullptr && d->nativeWindowId != 0) {
+	if (d->surface == nullptr && d->nativeWindowId != 0)
+	{
 		ms_warning("[Camera2 Capture] Video size has changed after video window id has been set, have to recreate Surface object...");
 		android_camera2_capture_create_surface_from_surface_texture(d);
 	}
@@ -1308,36 +1551,42 @@ static int android_camera2_capture_set_vsize(MSFilter *f, void* arg) {
 	return 0;
 }
 
-static int android_camera2_capture_get_vsize(MSFilter *f, void* arg) {
+static int android_camera2_capture_get_vsize(MSFilter *f, void *arg)
+{
 	AndroidCamera2Context *d = (AndroidCamera2Context *)f->data;
 
 	ms_filter_lock(f);
 	android_camera2_capture_update_preview_size(d);
 	ms_filter_unlock(f);
 
-	*(MSVideoSize*)arg = d->previewSize;
+	*(MSVideoSize *)arg = d->previewSize;
 	ms_message("[Camera2 Capture] Getting preview size: [%ix%i]", d->previewSize.width, d->previewSize.height);
 
 	return 0;
 }
 
-static int android_camera2_capture_set_device_rotation(MSFilter* f, void* arg) {
+static int android_camera2_capture_set_device_rotation(MSFilter *f, void *arg)
+{
 	AndroidCamera2Context *d = (AndroidCamera2Context *)f->data;
 
 	ms_filter_lock(f);
 
-	int rotation = *((int*)arg);
+	int rotation = *((int *)arg);
 
-	if (rotation != d->rotation) {
+	if (rotation != d->rotation)
+	{
 		ms_message("[Camera2 Capture] New device rotation is [%i]", rotation);
 		d->rotation = rotation;
 		android_camera2_capture_update_preview_size(d);
 		android_camera2_capture_rotate_video_preview_if_possible(d);
 
-		if (d->previewSize.width != 0 && d->previewSize.height != 0) {
+		if (d->previewSize.width != 0 && d->previewSize.height != 0)
+		{
 			ms_filter_notify(f, MS_CAMERA_PREVIEW_SIZE_CHANGED, &d->previewSize);
 		}
-	} else {
+	}
+	else
+	{
 		ms_warning("[Camera2 Capture] Newly set device rotation [%i] matches current value, skipping", rotation);
 	}
 
@@ -1346,49 +1595,49 @@ static int android_camera2_capture_set_device_rotation(MSFilter* f, void* arg) {
 	return 0;
 }
 
-static int android_camera2_capture_get_pix_fmt(MSFilter *f, void *data){
-	*(MSPixFmt*)data = MS_YUV420P;
+static int android_camera2_capture_get_pix_fmt(MSFilter *f, void *data)
+{
+	*(MSPixFmt *)data = MS_YUV420P;
 	return 0;
 }
 
 /* ************************************************************************* */
 
 static MSFilterMethod android_camera2_capture_methods[] = {
-		{ MS_FILTER_SET_FPS, &android_camera2_capture_set_fps },
-		{ MS_FILTER_GET_FPS, &android_camera2_capture_get_fps },
-		{ MS_FILTER_SET_VIDEO_SIZE, &android_camera2_capture_set_vsize },
-		{ MS_FILTER_GET_VIDEO_SIZE, &android_camera2_capture_get_vsize },
-		{ MS_VIDEO_CAPTURE_SET_DEVICE_ORIENTATION, &android_camera2_capture_set_device_rotation },
-		{ MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID, &android_camera2_capture_set_surface_texture },
-		{ MS_VIDEO_DISPLAY_SET_IMAGE_PREPROCESSOR, &android_camera2_set_image_preprocessor },
-		{ MS_FILTER_GET_PIX_FMT, &android_camera2_capture_get_pix_fmt },
-		{ 0, 0 }
-};
+	{MS_FILTER_SET_FPS, &android_camera2_capture_set_fps},
+	{MS_FILTER_GET_FPS, &android_camera2_capture_get_fps},
+	{MS_FILTER_SET_VIDEO_SIZE, &android_camera2_capture_set_vsize},
+	{MS_FILTER_GET_VIDEO_SIZE, &android_camera2_capture_get_vsize},
+	{MS_VIDEO_CAPTURE_SET_DEVICE_ORIENTATION, &android_camera2_capture_set_device_rotation},
+	{MS_VIDEO_DISPLAY_SET_NATIVE_WINDOW_ID, &android_camera2_capture_set_surface_texture},
+	{MS_VIDEO_DISPLAY_SET_IMAGE_PREPROCESSOR, &android_camera2_set_image_preprocessor},
+	{MS_FILTER_GET_PIX_FMT, &android_camera2_capture_get_pix_fmt},
+	{0, 0}};
 
-MSFilterDesc ms_android_camera2_capture_desc={
-		MS_ANDROID_VIDEO_READ_ID,
-		"MSAndroidCamera2Capture",
-		"A filter that captures Android video using camera2 APIs.",
-		MS_FILTER_OTHER,
-		NULL,
-		0,
-		1,
-		android_camera2_capture_init,
-		android_camera2_capture_preprocess,
-		android_camera2_capture_process,
-		android_camera2_capture_postprocess,
-		android_camera2_capture_uninit,
-		android_camera2_capture_methods
-};
+MSFilterDesc ms_android_camera2_capture_desc = {
+	MS_ANDROID_VIDEO_READ_ID,
+	"MSAndroidCamera2Capture",
+	"A filter that captures Android video using camera2 APIs.",
+	MS_FILTER_OTHER,
+	NULL,
+	0,
+	1,
+	android_camera2_capture_init,
+	android_camera2_capture_preprocess,
+	android_camera2_capture_process,
+	android_camera2_capture_postprocess,
+	android_camera2_capture_uninit,
+	android_camera2_capture_methods};
 
 static void android_camera2_capture_detect(MSWebCamManager *obj);
 
-static void android_camera2_capture_cam_init(MSWebCam *cam) { }
+static void android_camera2_capture_cam_init(MSWebCam *cam) {}
 
-static MSFilter *android_camera2_capture_create_reader(MSWebCam *obj) {
+static MSFilter *android_camera2_capture_create_reader(MSWebCam *obj)
+{
 	ms_message("[Camera2 Capture] Creating filter for camera %s", obj->id);
 
-	MSFilter* filter = ms_factory_create_filter_from_desc(ms_web_cam_get_factory(obj), &ms_android_camera2_capture_desc);
+	MSFilter *filter = ms_factory_create_filter_from_desc(ms_web_cam_get_factory(obj), &ms_android_camera2_capture_desc);
 	AndroidCamera2Context *d = (AndroidCamera2Context *)filter->data;
 	d->device = (AndroidCamera2Device *)obj->data;
 
@@ -1396,16 +1645,16 @@ static MSFilter *android_camera2_capture_create_reader(MSWebCam *obj) {
 }
 
 MSWebCamDesc ms_android_camera2_capture_webcam_desc = {
-		"AndroidCamera2Capture",
-		&android_camera2_capture_detect,
-		&android_camera2_capture_cam_init,
-		&android_camera2_capture_create_reader,
-		NULL
-};
+	"AndroidCamera2Capture",
+	&android_camera2_capture_detect,
+	&android_camera2_capture_cam_init,
+	&android_camera2_capture_create_reader,
+	NULL};
 
 extern void android_video_capture_detect_cameras_legacy(MSWebCamManager *obj);
 
-void android_camera2_capture_detect(MSWebCamManager *obj) {
+void android_camera2_capture_detect(MSWebCamManager *obj)
+{
 	ms_message("[Camera2 Capture] Detecting cameras");
 
 	ACameraIdList *cameraIdList = nullptr;
@@ -1415,13 +1664,15 @@ void android_camera2_capture_detect(MSWebCamManager *obj) {
 	ACameraManager *cameraManager = ACameraManager_create();
 
 	camera_status = ACameraManager_getCameraIdList(cameraManager, &cameraIdList);
-	if (camera_status != ACAMERA_OK) {
+	if (camera_status != ACAMERA_OK)
+	{
 		ms_error("[Camera2 Capture] Failed to get camera(s) list : %d", camera_status);
 		android_video_capture_detect_cameras_legacy(obj);
 		return;
 	}
 
-	if (cameraIdList->numCameras < 1) {
+	if (cameraIdList->numCameras < 1)
+	{
 		ms_warning("[Camera2 Capture] No camera detected !");
 		android_video_capture_detect_cameras_legacy(obj);
 		return;
@@ -1431,16 +1682,20 @@ void android_camera2_capture_detect(MSWebCamManager *obj) {
 	bool back_facing_found = false;
 
 	const char *camId = nullptr;
-	for (int i = 0; i < cameraIdList->numCameras; i++) {
+	for (int i = 0; i < cameraIdList->numCameras; i++)
+	{
 		camId = cameraIdList->cameraIds[i];
 
 		camera_status = ACameraManager_getCameraCharacteristics(cameraManager, camId, &cameraMetadata);
-		if (camera_status != ACAMERA_OK) {
+		if (camera_status != ACAMERA_OK)
+		{
 			ms_error("[Camera2 Capture] Failed to get camera %s characteristics", camId);
-		} else {
+		}
+		else
+		{
 			AndroidCamera2Device *device = new AndroidCamera2Device(ms_strdup(camId));
 
-  			ACameraMetadata_const_entry orientation;
+			ACameraMetadata_const_entry orientation;
 			ACameraMetadata_getConstEntry(cameraMetadata, ACAMERA_SENSOR_ORIENTATION, &orientation);
 			int32_t angle = orientation.data.i32[0];
 			device->orientation = angle;
@@ -1448,58 +1703,73 @@ void android_camera2_capture_detect(MSWebCamManager *obj) {
 			ACameraMetadata_const_entry hardwareLevel;
 			ACameraMetadata_getConstEntry(cameraMetadata, ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL, &hardwareLevel);
 			std::string supportedHardwareLevel = "unknown";
-			switch (hardwareLevel.data.u8[0]) {
-				case ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED:
-					supportedHardwareLevel = "limited";
-					break;
-				case ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_FULL:
-					supportedHardwareLevel = "full";
-					break;
-				case ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY:
-					supportedHardwareLevel = "legacy";
-					break;
-				case ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_3:
-					supportedHardwareLevel = "3";
-					break;
-				case ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_EXTERNAL:
-					supportedHardwareLevel = "external (limited)";
-					break;
+			switch (hardwareLevel.data.u8[0])
+			{
+			case ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED:
+				supportedHardwareLevel = "limited";
+				break;
+			case ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_FULL:
+				supportedHardwareLevel = "full";
+				break;
+			case ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY:
+				supportedHardwareLevel = "legacy";
+				break;
+			case ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_3:
+				supportedHardwareLevel = "3";
+				break;
+			case ACAMERA_INFO_SUPPORTED_HARDWARE_LEVEL_EXTERNAL:
+				supportedHardwareLevel = "external (limited)";
+				break;
 			}
 
-  			ACameraMetadata_const_entry face;
+			ACameraMetadata_const_entry face;
 			ACameraMetadata_getConstEntry(cameraMetadata, ACAMERA_LENS_FACING, &face);
 			bool back_facing = face.data.u8[0] == ACAMERA_LENS_FACING_BACK;
 			bool external = face.data.u8[0] == ACAMERA_LENS_FACING_EXTERNAL;
-			std::string facing = std::string(external ? "external" : !back_facing ? "front" : "back");
+			std::string facing = std::string(external ? "external" : !back_facing ? "front"
+																				  : "back");
 			ms_message("[Camera2 Capture] Camera %s is facing [%s] with angle [%d], hardware level is [%s]", camId, facing.c_str(), angle, supportedHardwareLevel.c_str());
 			device->back_facing = back_facing;
 			device->external = external;
 
 			MSWebCam *cam = ms_web_cam_new(&ms_android_camera2_capture_webcam_desc);
 			std::string idstring = std::string(!back_facing ? "Front" : "Back") + std::string("FacingCamera");
-			if (external) {
+			if (external)
+			{
 				idstring = std::string("ExternalCamera") + std::string(camId);
 			}
 			cam->id = ms_strdup(idstring.c_str());
 			cam->name = ms_strdup(idstring.c_str());
 			cam->data = device;
 
-			if (external) {
+			if (external)
+			{
 				ms_web_cam_manager_prepend_cam(obj, cam);
-			} else {
-				if ((back_facing && !back_facing_found) || (!back_facing && !front_facing_found)) {
-					if (angle == -1) {
+			}
+			else
+			{
+				if ((back_facing && !back_facing_found) || (!back_facing && !front_facing_found))
+				{
+					if (angle == -1)
+					{
 						ms_warning("[Camera2 Capture] [%s] facing camera has an angle of -1, skipping this one [%s]", facing.c_str(), camId);
 						ms_web_cam_destroy(cam);
-					} else {
+					}
+					else
+					{
 						ms_web_cam_manager_prepend_cam(obj, cam);
-						if (back_facing) {
+						if (back_facing)
+						{
 							back_facing_found = true;
-						} else {
+						}
+						else
+						{
 							front_facing_found = true;
 						}
 					}
-				} else {
+				}
+				else
+				{
 					ms_warning("[Camera2 Capture] A [%s] facing camera has already been added, skipping this one [%s]", facing.c_str(), camId);
 					ms_web_cam_destroy(cam);
 				}
@@ -1519,7 +1789,9 @@ void android_camera2_capture_detect(MSWebCamManager *obj) {
 #define MS_PLUGIN_DECLARE(type) extern "C" type
 #endif
 
-MS_PLUGIN_DECLARE(void) libmsandroidcamera2_init(MSFactory* factory) {
+MS_PLUGIN_DECLARE(void)
+libmsandroidcamera2_init(MSFactory *factory)
+{
 	ms_factory_register_filter(factory, &ms_android_camera2_capture_desc);
 	ms_message("[Camera2 Capture] libmsandroidcamera2 plugin loaded");
 
